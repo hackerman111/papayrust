@@ -27,6 +27,8 @@ impl App {
                             if self.selected_collection > 0 {
                                 self.record_position_for_current_collection();
                                 self.selected_collection -= 1;
+                                self.selected_paper = 0;
+                                self.selected_toc = 0;
                                 self.sync_current_selection();
                             }
                         }
@@ -64,6 +66,8 @@ impl App {
                             {
                                 self.record_position_for_current_collection();
                                 self.selected_collection += 1;
+                                self.selected_paper = 0;
+                                self.selected_toc = 0;
                                 self.sync_current_selection();
                             }
                         }

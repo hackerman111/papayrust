@@ -170,11 +170,11 @@ impl App {
             if let Some(&remembered_pid) = self.last_paper_by_collection.get(col_key) {
                 if let Some(pos) = self.papers.iter().position(|p| p.id == remembered_pid) {
                     self.selected_paper = pos;
-                } else if self.selected_paper >= self.papers.len() {
-                    self.selected_paper = self.papers.len().saturating_sub(1);
+                } else {
+                    self.selected_paper = self.selected_paper.min(self.papers.len().saturating_sub(1));
                 }
-            } else if self.selected_paper >= self.papers.len() {
-                self.selected_paper = self.papers.len().saturating_sub(1);
+            } else {
+                self.selected_paper = self.selected_paper.min(self.papers.len().saturating_sub(1));
             }
         }
         self.selected_toc = 0;
@@ -203,11 +203,11 @@ impl App {
             if let Some(&remembered_tid) = self.last_toc_by_paper.get(&paper_id) {
                 if let Some(pos) = self.toc_preview.iter().position(|t| t.id == remembered_tid) {
                     self.selected_toc = pos;
-                } else if self.selected_toc >= self.toc_preview.len() {
-                    self.selected_toc = self.toc_preview.len().saturating_sub(1);
+                } else {
+                    self.selected_toc = self.selected_toc.min(self.toc_preview.len().saturating_sub(1));
                 }
-            } else if self.selected_toc >= self.toc_preview.len() {
-                self.selected_toc = self.toc_preview.len().saturating_sub(1);
+            } else {
+                self.selected_toc = self.selected_toc.min(self.toc_preview.len().saturating_sub(1));
             }
         }
     }

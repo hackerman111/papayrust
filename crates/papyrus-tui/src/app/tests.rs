@@ -952,3 +952,166 @@ fn test_db_reload_preserves_selection_by_uuid() {
     assert_eq!(app.selection.paper_id, Some(p2.id));
     assert_eq!(app.papers[app.selected_paper].id, p2.id);
 }
+
+#[test]
+fn test_position_memory_roundtrip() {
+    let col1_id = Uuid::now_v7();
+    let col2_id = Uuid::now_v7();
+
+    let p1 = dummy_paper("P1", "A1", 2020);
+    let p2 = dummy_paper("P2", "A2", 2021);
+    let p3 = dummy_paper("P3", "A3", 2022);
+    let p4 = dummy_paper("P4", "A4", 2023);
+
+    let p2_id = p2.id;
+    let p4_id = p4.id;
+
+    let col1 = CollectionItem::new(Some(col1_id), "Col 1", 2);
+    let col2 = CollectionItem::new(Some(col2_id), "Col 2", 2);
+
+    let mut papers_by_col = HashMap::new();
+    papers_by_col.insert(Some(col1_id), vec![p1, p2]);
+    papers_by_col.insert(Some(col2_id), vec![p3, p4]);
+
+    let mut app = App::with_data(vec![col1, col2], papers_by_col, HashMap::new());
+    app.active_panel = ActivePanel::Collections;
+
+    // Initially at col 0, papers: [P1, P2]
+    assert_eq!(app.selected_collection, 0);
+    // Switch to Papers panel and move down to P2
+    app.active_panel = ActivePanel::Papers;
+    app.dispatch(Action::MoveDown);
+    assert_eq!(app.selected_paper, 1);
+    assert_eq!(app.selection.paper_id, Some(p2_id));
+
+    // Switch to Collections panel and move down to Col 2
+    app.active_panel = ActivePanel::Collections;
+    app.dispatch(Action::MoveDown);
+    assert_eq!(app.selected_collection, 1);
+    assert_eq!(app.selected_paper, 0); // Col 2 has no memory yet -> defaults to P3 (0)
+
+    // Select P4 in Col 2
+    app.active_panel = ActivePanel::Papers;
+    app.dispatch(Action::MoveDown);
+    assert_eq!(app.selected_paper, 1);
+    assert_eq!(app.selection.paper_id, Some(p4_id));
+
+    // Switch to Collections panel and move back up to Col 1
+    app.active_panel = ActivePanel::Collections;
+    app.dispatch(Action::MoveUp);
+    assert_eq!(app.selected_collection, 0);
+    // Memory should have restored P2 (index 1)!
+    assert_eq!(app.selected_paper, 1);
+    assert_eq!(app.selection.paper_id, Some(p2_id));
+
+    // Move back down to Col 2
+    app.dispatch(Action::MoveDown);
+    assert_eq!(app.selected_collection, 1);
+    // Memory should have restored P4 (index 1)!
+    assert_eq!(app.selected_paper, 1);
+    assert_eq!(app.selection.paper_id, Some(p4_id));
+}
+
+#[test]
+fn test_position_memory_by_paper_toc() {
+    let col_id = Uuid::now_v7();
+    let p1 = dummy_paper("P1", "A1", 2020);
+    let p2 = dummy_paper("P2", "A2", 2021);
+
+    let p1_id = p1.id;
+    let p2_id = p2.id;
+
+    let t1_1 = dummy_toc(p1_id, "TOC 1.1", 1);
+    let t1_2 = dummy_toc(p1_id, "TOC 1.2", 5);
+    let t1_3 = dummy_toc(p1_id, "TOC 1.3", 10);
+    let t1_3_id = t1_3.id;
+
+    let t2_1 = dummy_toc(p2_id, "TOC 2.1", 1);
+    let t2_2 = dummy_toc(p2_id, "TOC 2.2", 20);
+
+    let col = CollectionItem::new(Some(col_id), "Col 1", 2);
+
+    let mut papers_by_col = HashMap::new();
+    papers_by_col.insert(Some(col_id), vec![p1, p2]);
+
+    let mut tocs = HashMap::new();
+    tocs.insert(p1_id, vec![t1_1, t1_2, t1_3]);
+    tocs.insert(p2_id, vec![t2_1, t2_2]);
+
+    let mut app = App::with_data(vec![col], papers_by_col, tocs);
+
+    // Currently at P1 (index 0)
+    assert_eq!(app.selected_paper, 0);
+    // Move to Details panel and select TOC 1.3 (index 2)
+    app.active_panel = ActivePanel::Details;
+    app.dispatch(Action::MoveDown); // index 1
+    app.dispatch(Action::MoveDown); // index 2
+    assert_eq!(app.selected_toc, 2);
+    assert_eq!(app.selection.toc_id, Some(t1_3_id));
+
+    // Move back to Papers panel and move down to P2
+    app.active_panel = ActivePanel::Papers;
+    app.dispatch(Action::MoveDown);
+    assert_eq!(app.selected_paper, 1);
+    assert_eq!(app.selected_toc, 0); // P2 defaults to TOC 2.1 (index 0)
+
+    // Move back to P1
+    app.dispatch(Action::MoveUp);
+    assert_eq!(app.selected_paper, 0);
+    // Memory should have restored TOC 1.3 (index 2)!
+    assert_eq!(app.selected_toc, 2);
+    assert_eq!(app.selection.toc_id, Some(t1_3_id));
+}
+
+#[test]
+fn test_delete_fallback_selection() {
+    let col_id = Uuid::now_v7();
+    let p1 = dummy_paper("P1", "A1", 2020);
+    let p2 = dummy_paper("P2", "A2", 2021);
+    let p3 = dummy_paper("P3", "A3", 2022);
+
+    let p1_id = p1.id;
+    let p2_id = p2.id;
+    let p3_id = p3.id;
+
+    let col = CollectionItem::new(Some(col_id), "Col 1", 3);
+    let mut papers_by_col = HashMap::new();
+    papers_by_col.insert(Some(col_id), vec![p1, p2, p3]);
+
+    let mut app = App::with_data(vec![col], papers_by_col, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+
+    // 1. Delete last element (P3 at index 2)
+    app.selected_paper = 2;
+    app.update_selection_from_indices();
+    assert_eq!(app.selection.paper_id, Some(p3_id));
+
+    app.dispatch(Action::DeleteConfirmOpen);
+    app.dispatch(Action::DeleteConfirmExecute);
+
+    // Papers list is now [P1, P2]. Selected paper should clamp to index 1 (P2), not panic
+    assert_eq!(app.papers.len(), 2);
+    assert_eq!(app.selected_paper, 1);
+    assert_eq!(app.selection.paper_id, Some(p2_id));
+
+    // 2. Delete middle element (P2 at index 1)
+    app.dispatch(Action::DeleteConfirmOpen);
+    app.dispatch(Action::DeleteConfirmExecute);
+
+    // Papers list is now [P1]. Selected paper should clamp to index 0 (P1)
+    assert_eq!(app.papers.len(), 1);
+    assert_eq!(app.selected_paper, 0);
+    assert_eq!(app.selection.paper_id, Some(p1_id));
+
+    // 3. Delete only element (P1 at index 0)
+    app.dispatch(Action::DeleteConfirmOpen);
+    app.dispatch(Action::DeleteConfirmExecute);
+
+    // Papers list is now empty. Selected paper is 0, selection.paper_id is None, no panic
+    assert_eq!(app.papers.len(), 0);
+    assert_eq!(app.selected_paper, 0);
+    assert_eq!(app.selection.paper_id, None);
+    assert_eq!(app.toc_preview.len(), 0);
+    assert_eq!(app.selected_toc, 0);
+    assert_eq!(app.selection.toc_id, None);
+}
