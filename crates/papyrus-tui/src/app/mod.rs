@@ -4,6 +4,7 @@ pub mod dispatch;
 pub mod metadata;
 pub mod navigation;
 pub mod panel;
+pub mod picker;
 pub mod search;
 pub mod selection;
 pub mod sorting;
@@ -14,6 +15,7 @@ mod tests;
 
 pub use navigation::Motion;
 pub use panel::{ActivePanel, CollectionItem};
+pub use picker::{GenericPicker, PickerItem};
 pub use selection::{CollectionKey, SelectionState};
 pub use sorting::{PaperSortField, SortDirection};
 pub use toc::{TocEditState, TocImportSourceType, TocImportState};

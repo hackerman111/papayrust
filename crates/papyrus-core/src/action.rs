@@ -109,6 +109,22 @@ pub enum Action {
     ImportMetadataModalCancel,
     ImportMetadataModalAutocomplete,
     AddPaperModalAutocomplete,
+    QuickOpenModalOpen,
+    CollectionMembershipModalOpen,
+    TagModalOpen,
+    VisualModeToggle,
+    VisualModeCancel,
+    VisualModeSelectAll,
+    PickerInput(char),
+    PickerBackspace,
+    PickerMoveUp,
+    PickerMoveDown,
+    PickerPageUp,
+    PickerPageDown,
+    PickerToggleItem,
+    PickerConfirm,
+    PickerCancel,
+    BatchDeleteConfirm,
     Quit,
 }
 
@@ -254,5 +270,27 @@ mod tests {
 
         assert_eq!(Action::PendingChord('g'), Action::PendingChord('g'));
         assert_ne!(Action::PendingChord('g'), Action::PendingChord('z'));
+
+        // Picker and Visual Mode Actions
+        assert_eq!(Action::QuickOpenModalOpen, Action::QuickOpenModalOpen);
+        assert_eq!(
+            Action::CollectionMembershipModalOpen,
+            Action::CollectionMembershipModalOpen
+        );
+        assert_eq!(Action::TagModalOpen, Action::TagModalOpen);
+        assert_eq!(Action::VisualModeToggle, Action::VisualModeToggle);
+        assert_eq!(Action::VisualModeCancel, Action::VisualModeCancel);
+        assert_eq!(Action::VisualModeSelectAll, Action::VisualModeSelectAll);
+        assert_eq!(Action::PickerInput('a'), Action::PickerInput('a'));
+        assert_ne!(Action::PickerInput('a'), Action::PickerInput('b'));
+        assert_eq!(Action::PickerBackspace, Action::PickerBackspace);
+        assert_eq!(Action::PickerMoveUp, Action::PickerMoveUp);
+        assert_eq!(Action::PickerMoveDown, Action::PickerMoveDown);
+        assert_eq!(Action::PickerPageUp, Action::PickerPageUp);
+        assert_eq!(Action::PickerPageDown, Action::PickerPageDown);
+        assert_eq!(Action::PickerToggleItem, Action::PickerToggleItem);
+        assert_eq!(Action::PickerConfirm, Action::PickerConfirm);
+        assert_eq!(Action::PickerCancel, Action::PickerCancel);
+        assert_eq!(Action::BatchDeleteConfirm, Action::BatchDeleteConfirm);
     }
 }
