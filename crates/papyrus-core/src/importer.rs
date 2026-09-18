@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 use uuid::Uuid;
 
+pub mod json_metadata;
+pub use json_metadata::import_metadata_from_path;
+
 use crate::config::Config;
 use crate::db::collection_repo::CollectionRepo;
 use crate::db::error::RepoError;

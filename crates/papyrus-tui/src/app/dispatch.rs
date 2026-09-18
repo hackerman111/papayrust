@@ -2,6 +2,7 @@ use papyrus_core::opener;
 use papyrus_core::Action;
 use std::path::PathBuf;
 
+use crate::app::autocomplete::autocomplete_path;
 use crate::app::{ActivePanel, App};
 
 impl App {
@@ -251,11 +252,31 @@ impl App {
             Action::AddPaperModalConfirm => {
                 self.confirm_add_paper();
             }
+            Action::AddPaperModalAutocomplete => {
+                if let Some(completed) = autocomplete_path(&self.add_paper_path_buffer) {
+                    self.add_paper_path_buffer = completed;
+                }
+            }
 
-            // Create Collection Modal actions
+            // Create Collection & Subcollection Modal actions
             Action::CreateCollectionModalOpen => {
+                self.create_collection_parent_id = None;
                 self.is_creating_collection = true;
                 self.collection_name_buffer.clear();
+            }
+            Action::CreateSubcollectionModalOpen => {
+                let Some(col) = self.current_collection() else {
+                    self.set_status("No collection selected");
+                    return;
+                };
+                let Some(col_id) = col.id else {
+                    self.set_status("Cannot create subcollection inside 'All Papers'");
+                    return;
+                };
+                self.create_collection_parent_id = Some(col_id);
+                self.is_creating_collection = true;
+                self.collection_name_buffer.clear();
+                self.needs_clear = true;
             }
             Action::CreateCollectionModalInput(c) => {
                 self.collection_name_buffer.push(c);
@@ -265,10 +286,96 @@ impl App {
             }
             Action::CreateCollectionModalCancel => {
                 self.is_creating_collection = false;
+                self.create_collection_parent_id = None;
                 self.collection_name_buffer.clear();
             }
             Action::CreateCollectionModalConfirm => {
                 self.confirm_create_collection();
+            }
+
+            // Rename Collection Modal actions
+            Action::RenameCollectionModalOpen => {
+                let Some(col) = self.current_collection() else {
+                    self.set_status("No collection selected to rename");
+                    return;
+                };
+                if col.id.is_none() {
+                    self.set_status("Cannot rename 'All Papers' virtual collection");
+                    return;
+                }
+                self.rename_collection_buffer = col.name.clone();
+                self.is_renaming_collection = true;
+                self.needs_clear = true;
+            }
+            Action::RenameCollectionModalInput(c) => {
+                self.rename_collection_buffer.push(c);
+            }
+            Action::RenameCollectionModalBackspace => {
+                self.rename_collection_buffer.pop();
+            }
+            Action::RenameCollectionModalCancel => {
+                self.is_renaming_collection = false;
+                self.rename_collection_buffer.clear();
+                self.needs_clear = true;
+            }
+            Action::RenameCollectionModalConfirm => {
+                self.confirm_rename_collection();
+            }
+
+            // Export Collection Modal actions
+            Action::ExportCollectionModalOpen => {
+                if self.collections.is_empty() {
+                    self.set_status("No collection selected to export");
+                    return;
+                }
+                self.is_exporting_collection = true;
+                self.export_path_buffer.clear();
+                self.needs_clear = true;
+            }
+            Action::ExportCollectionModalInput(c) => {
+                self.export_path_buffer.push(c);
+            }
+            Action::ExportCollectionModalBackspace => {
+                self.export_path_buffer.pop();
+            }
+            Action::ExportCollectionModalCancel => {
+                self.is_exporting_collection = false;
+                self.export_path_buffer.clear();
+                self.needs_clear = true;
+            }
+            Action::ExportCollectionModalAutocomplete => {
+                if let Some(completed) = autocomplete_path(&self.export_path_buffer) {
+                    self.export_path_buffer = completed;
+                }
+            }
+            Action::ExportCollectionModalConfirm => {
+                self.confirm_export_collection();
+            }
+
+            // Import Metadata Modal actions
+            Action::ImportMetadataModalOpen => {
+                self.is_importing_metadata = true;
+                self.import_metadata_buffer.clear();
+                self.needs_clear = true;
+            }
+            Action::ImportMetadataModalInput(c) => {
+                self.import_metadata_buffer.push(c);
+            }
+            Action::ImportMetadataModalBackspace => {
+                self.import_metadata_buffer.pop();
+            }
+            Action::ImportMetadataModalCancel => {
+                self.is_importing_metadata = false;
+                self.import_metadata_buffer.clear();
+                self.needs_clear = true;
+            }
+            Action::ImportMetadataModalAutocomplete => {
+                if let Some(completed) = autocomplete_path(&self.import_metadata_buffer) {
+                    self.import_metadata_buffer = completed;
+                }
+            }
+            Action::ImportMetadataModalConfirm => {
+                self.confirm_import_metadata();
             }
 
             // Fullscreen TOC actions
@@ -355,11 +462,13 @@ impl App {
             return;
         }
 
+        let parent_id = self.create_collection_parent_id;
+
         if let Some(ref conn) = self.db_conn {
             let new_col = papyrus_core::db::Collection {
                 id: uuid::Uuid::now_v7(),
                 name: name.to_string(),
-                parent_id: None,
+                parent_id,
             };
 
             match papyrus_core::db::CollectionRepo::insert(conn, &new_col) {
@@ -376,6 +485,7 @@ impl App {
                         self.sync_current_selection();
                     }
                     self.is_creating_collection = false;
+                    self.create_collection_parent_id = None;
                     self.collection_name_buffer.clear();
                     self.needs_clear = true;
                     self.set_status(format!("Created collection '{}'", new_col.name));
@@ -386,16 +496,200 @@ impl App {
             }
         } else {
             let new_id = uuid::Uuid::now_v7();
-            let new_item = crate::app::CollectionItem::new(Some(new_id), &name, 0);
+            let parent_depth = parent_id
+                .and_then(|pid| {
+                    self.collections
+                        .iter()
+                        .find(|c| c.id == Some(pid))
+                        .map(|c| c.depth)
+                })
+                .unwrap_or(0);
+            let depth = if parent_id.is_some() {
+                parent_depth + 1
+            } else {
+                0
+            };
+            let new_item = crate::app::CollectionItem::with_hierarchy(
+                Some(new_id),
+                &name,
+                0,
+                depth,
+                parent_id,
+            );
             self.add_collection(new_item, Vec::new());
             self.selected_collection = self.collections.len().saturating_sub(1);
             self.selected_paper = 0;
             self.selected_toc = 0;
             self.sync_current_selection();
             self.is_creating_collection = false;
+            self.create_collection_parent_id = None;
             self.collection_name_buffer.clear();
             self.needs_clear = true;
             self.set_status(format!("Created collection '{name}'"));
+        }
+    }
+
+    /// Confirms renaming the currently selected collection.
+    fn confirm_rename_collection(&mut self) {
+        let new_name = self.rename_collection_buffer.trim().to_string();
+        if new_name.is_empty() {
+            self.set_status("Collection name cannot be empty");
+            return;
+        }
+        let Some(col) = self.current_collection() else {
+            self.set_status("No collection selected");
+            return;
+        };
+        let Some(col_id) = col.id else {
+            self.set_status("Cannot rename 'All Papers' virtual collection");
+            return;
+        };
+
+        if let Some(ref conn) = self.db_conn {
+            match papyrus_core::db::CollectionRepo::rename(conn, col_id, &new_name) {
+                Ok(_) => {
+                    let _ = self.reload_from_db();
+                    self.is_renaming_collection = false;
+                    self.rename_collection_buffer.clear();
+                    self.needs_clear = true;
+                    self.set_status(format!("Renamed collection to '{new_name}'"));
+                }
+                Err(err) => {
+                    self.set_status(format!("Failed to rename collection: {err}"));
+                }
+            }
+        } else {
+            if let Some(col_item) = self.collections.get_mut(self.selected_collection) {
+                col_item.name = new_name.clone();
+            }
+            self.is_renaming_collection = false;
+            self.rename_collection_buffer.clear();
+            self.needs_clear = true;
+            self.set_status(format!("Renamed collection to '{new_name}'"));
+        }
+    }
+
+    /// Confirms exporting the currently selected collection (or library) to a ZIP archive.
+    fn confirm_export_collection(&mut self) {
+        let Some(col) = self.current_collection().cloned() else {
+            self.set_status("No collection selected to export");
+            return;
+        };
+
+        let raw_path = self.export_path_buffer.trim();
+        let target_path = if !raw_path.is_empty() {
+            let expanded = if let Some(stripped) = raw_path.strip_prefix("~/") {
+                if let Some(home) = std::env::var_os("HOME") {
+                    PathBuf::from(home).join(stripped)
+                } else {
+                    PathBuf::from(raw_path)
+                }
+            } else {
+                PathBuf::from(raw_path)
+            };
+            if expanded.is_dir() || raw_path.ends_with('/') {
+                let default_name = if let Some(ref col_id) = col.id {
+                    let clean = col.name.replace(['/', '\\', ' '], "_");
+                    format!("papyrus_collection_{clean}_{col_id}.zip")
+                } else {
+                    "papyrus_library_export.zip".to_string()
+                };
+                expanded.join(default_name)
+            } else if expanded.extension().is_none() {
+                expanded.with_extension("zip")
+            } else {
+                expanded
+            }
+        } else {
+            PathBuf::new()
+        };
+
+        let options = papyrus_core::ExportOptions {
+            output_path: target_path,
+            overwrite: true,
+            include_database: true,
+            skip_missing_files: true,
+        };
+
+        if let Some(ref conn) = self.db_conn {
+            let result = if let Some(col_id) = col.id {
+                papyrus_core::export_collection(conn, &self.config, col_id, &options)
+            } else {
+                papyrus_core::export_library(conn, &self.config, &options)
+            };
+
+            match result {
+                Ok(res) => {
+                    self.is_exporting_collection = false;
+                    self.export_path_buffer.clear();
+                    self.needs_clear = true;
+                    self.set_status(format!(
+                        "Exported {} papers to '{}'",
+                        res.paper_count,
+                        res.archive_path.display()
+                    ));
+                }
+                Err(err) => {
+                    self.set_status(format!("Export failed: {err}"));
+                }
+            }
+        } else {
+            self.is_exporting_collection = false;
+            self.export_path_buffer.clear();
+            self.needs_clear = true;
+            self.set_status("Cannot export collection: database connection unavailable");
+        }
+    }
+
+    /// Confirms importing metadata from a JSON file or directory path.
+    fn confirm_import_metadata(&mut self) {
+        let raw_path = self.import_metadata_buffer.trim();
+        if raw_path.is_empty() {
+            self.set_status("Please enter a JSON file or directory path");
+            return;
+        }
+
+        let expanded_path = if let Some(stripped) = raw_path.strip_prefix("~/") {
+            if let Some(home) = std::env::var_os("HOME") {
+                PathBuf::from(home).join(stripped)
+            } else {
+                PathBuf::from(raw_path)
+            }
+        } else {
+            PathBuf::from(raw_path)
+        };
+
+        if !expanded_path.exists() {
+            self.set_status(format!("Path not found: '{}'", expanded_path.display()));
+            return;
+        }
+
+        let selected_paper_id = self.current_paper().map(|p| p.id);
+
+        if let Some(ref mut conn) = self.db_conn {
+            let index_ref = self.search_index.as_deref();
+            match papyrus_core::import_metadata_from_path(
+                conn,
+                &expanded_path,
+                selected_paper_id,
+                index_ref,
+            ) {
+                Ok(count) => {
+                    let _ = self.reload_from_db();
+                    self.is_importing_metadata = false;
+                    self.import_metadata_buffer.clear();
+                    self.needs_clear = true;
+                    self.set_status(format!("Updated metadata for {count} paper(s)"));
+                }
+                Err(err) => {
+                    self.set_status(format!("Metadata import failed: {err}"));
+                }
+            }
+        } else {
+            self.is_importing_metadata = false;
+            self.import_metadata_buffer.clear();
+            self.needs_clear = true;
+            self.set_status("Cannot import metadata: database connection unavailable");
         }
     }
 

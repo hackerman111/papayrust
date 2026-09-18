@@ -137,7 +137,10 @@ mod tests {
 
     #[test]
     fn test_longest_common_prefix() {
-        assert_eq!(longest_common_prefix(&["apple", "app", "application"]), "app");
+        assert_eq!(
+            longest_common_prefix(&["apple", "app", "application"]),
+            "app"
+        );
         assert_eq!(longest_common_prefix(&["apple", "banana"]), "");
         assert_eq!(longest_common_prefix(&["exact"]), "exact");
     }

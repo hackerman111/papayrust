@@ -9,8 +9,9 @@ use ratatui::Frame;
 use crate::app::App;
 use modals::{
     render_add_paper_modal, render_create_collection_modal, render_delete_confirm_modal,
-    render_edit_tags_modal, render_help_modal, render_metadata_modal, render_toc_import_modal,
-    render_toc_modal,
+    render_edit_tags_modal, render_export_collection_modal, render_help_modal,
+    render_import_metadata_modal, render_metadata_modal, render_rename_collection_modal,
+    render_toc_import_modal, render_toc_modal,
 };
 use panels::{render_collections, render_details, render_fullscreen_toc, render_papers};
 use search_bar::render_search_bar;
@@ -77,6 +78,12 @@ pub fn render(app: &App, frame: &mut Frame) {
     // 6. Floating Modals (if active)
     if app.is_creating_collection {
         render_create_collection_modal(app, frame);
+    } else if app.is_renaming_collection {
+        render_rename_collection_modal(app, frame);
+    } else if app.is_exporting_collection {
+        render_export_collection_modal(app, frame);
+    } else if app.is_importing_metadata {
+        render_import_metadata_modal(app, frame);
     } else if app.is_adding_paper {
         render_add_paper_modal(app, frame);
     } else if app.is_editing_metadata {

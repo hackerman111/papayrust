@@ -19,7 +19,7 @@ pub use export::{
     export_collection, export_library, ExportError, ExportOptions, ExportResult, Manifest,
     ManifestCollection, ManifestPaper,
 };
-pub use importer::{import_paper, ImportError, Importer};
+pub use importer::{import_metadata_from_path, import_paper, ImportError, Importer};
 pub use metadata_editor::{update_metadata, MetadataError, UpdatePaperMetadata};
 pub use opener::{
     build_open_command, open_paper, resolve_paper_path, CommandRunner, ExecutedCommand,

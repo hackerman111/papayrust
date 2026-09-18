@@ -657,3 +657,232 @@ fn test_help_modal_toggle() {
     app.dispatch(Action::HelpModalToggle);
     assert!(!app.is_showing_help);
 }
+
+#[test]
+fn test_subcollection_creation_and_tree_hierarchy() {
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let mut app = App::from_db_conn(conn).unwrap();
+
+    // 1. Create root collection "Computer Science"
+    app.dispatch(Action::CreateCollectionModalOpen);
+    for c in "Computer Science".chars() {
+        app.dispatch(Action::CreateCollectionModalInput(c));
+    }
+    app.dispatch(Action::CreateCollectionModalConfirm);
+
+    let cs_idx = app
+        .collections
+        .iter()
+        .position(|c| c.name == "Computer Science")
+        .unwrap();
+    assert_eq!(app.collections[cs_idx].depth, 0);
+    let cs_id = app.collections[cs_idx].id.unwrap();
+
+    // 2. Select CS and create subcollection "AI"
+    app.selected_collection = cs_idx;
+    app.dispatch(Action::CreateSubcollectionModalOpen);
+    assert_eq!(app.create_collection_parent_id, Some(cs_id));
+    assert!(app.is_creating_collection);
+
+    for c in "Artificial Intelligence".chars() {
+        app.dispatch(Action::CreateCollectionModalInput(c));
+    }
+    app.dispatch(Action::CreateCollectionModalConfirm);
+
+    let ai_idx = app
+        .collections
+        .iter()
+        .position(|c| c.name == "Artificial Intelligence")
+        .unwrap();
+    assert_eq!(app.collections[ai_idx].depth, 1);
+    assert_eq!(app.collections[ai_idx].parent_id, Some(cs_id));
+
+    // Verify ordering: CS comes right before its child AI
+    assert_eq!(ai_idx, cs_idx + 1);
+}
+
+#[test]
+fn test_collection_rename_lifecycle_and_persistence() {
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let mut app = App::from_db_conn(conn).unwrap();
+
+    // Cannot rename "All Papers"
+    app.selected_collection = 0;
+    app.dispatch(Action::RenameCollectionModalOpen);
+    assert!(!app.is_renaming_collection);
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Cannot rename 'All Papers' virtual collection")
+    );
+
+    // Create a collection
+    app.dispatch(Action::CreateCollectionModalOpen);
+    for c in "Drafts".chars() {
+        app.dispatch(Action::CreateCollectionModalInput(c));
+    }
+    app.dispatch(Action::CreateCollectionModalConfirm);
+
+    let drafts_idx = app
+        .collections
+        .iter()
+        .position(|c| c.name == "Drafts")
+        .unwrap();
+    app.selected_collection = drafts_idx;
+
+    // Open rename modal
+    app.dispatch(Action::RenameCollectionModalOpen);
+    assert!(app.is_renaming_collection);
+    assert_eq!(app.rename_collection_buffer, "Drafts");
+
+    // Change to "Archived Papers"
+    app.rename_collection_buffer.clear();
+    for c in "Archived Papers".chars() {
+        app.dispatch(Action::RenameCollectionModalInput(c));
+    }
+    app.dispatch(Action::RenameCollectionModalConfirm);
+
+    assert!(!app.is_renaming_collection);
+    assert!(app.collections.iter().any(|c| c.name == "Archived Papers"));
+    assert!(!app.collections.iter().any(|c| c.name == "Drafts"));
+
+    // Verify in SQLite
+    if let Some(ref conn) = app.db_conn {
+        let cols = papyrus_core::db::CollectionRepo::list(conn).unwrap();
+        assert!(cols.iter().any(|c| c.name == "Archived Papers"));
+    }
+}
+
+#[test]
+fn test_collection_export_to_zip() {
+    use tempfile::tempdir;
+
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let mut app = App::from_db_conn(conn).unwrap();
+
+    let p = dummy_paper("Export Paper", "Researcher", 2023);
+    // Create a dummy file so export doesn't fail on missing file
+    let dir = tempdir().unwrap();
+    let dummy_pdf = dir.path().join("export_dummy.pdf");
+    std::fs::write(&dummy_pdf, b"%PDF-1.4 dummy content").unwrap();
+
+    let mut p_with_real_path = p.clone();
+    p_with_real_path.file_path = dummy_pdf.to_str().unwrap().to_string();
+
+    if let Some(ref conn) = app.db_conn {
+        papyrus_core::db::PaperRepo::insert(conn, &p_with_real_path).unwrap();
+    }
+    app.reload_from_db().unwrap();
+
+    let zip_dest = dir.path().join("my_export.zip");
+
+    // Open export modal
+    app.dispatch(Action::ExportCollectionModalOpen);
+    assert!(app.is_exporting_collection);
+
+    for c in zip_dest.to_str().unwrap().chars() {
+        app.dispatch(Action::ExportCollectionModalInput(c));
+    }
+    app.dispatch(Action::ExportCollectionModalConfirm);
+
+    assert!(!app.is_exporting_collection);
+    assert!(zip_dest.exists());
+    assert!(app
+        .status_message
+        .as_deref()
+        .unwrap_or("")
+        .starts_with("Exported 1 papers to"));
+}
+
+#[test]
+fn test_import_metadata_from_json_lifecycle() {
+    use tempfile::tempdir;
+
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let mut app = App::from_db_conn(conn).unwrap();
+
+    let p = dummy_paper("Unprocessed Paper", "Unknown", 2019);
+    if let Some(ref conn) = app.db_conn {
+        papyrus_core::db::PaperRepo::insert(conn, &p).unwrap();
+    }
+    app.reload_from_db().unwrap();
+    assert_eq!(app.papers.len(), 1);
+
+    let dir = tempdir().unwrap();
+    let json_file = dir.path().join("metadata.json");
+    std::fs::write(
+        &json_file,
+        r#"{
+            "title": "Quantum Supremacy Using a Programmable Superconducting Processor",
+            "authors": "Arute et al.",
+            "year": 2019,
+            "journal": "Nature",
+            "tags": ["quantum", "google"]
+        }"#,
+    )
+    .unwrap();
+
+    // Select paper and import metadata
+    app.selected_paper = 0;
+    app.dispatch(Action::ImportMetadataModalOpen);
+    assert!(app.is_importing_metadata);
+
+    for c in json_file.to_str().unwrap().chars() {
+        app.dispatch(Action::ImportMetadataModalInput(c));
+    }
+    app.dispatch(Action::ImportMetadataModalConfirm);
+
+    assert!(!app.is_importing_metadata);
+    assert_eq!(
+        app.papers[0].title.as_deref(),
+        Some("Quantum Supremacy Using a Programmable Superconducting Processor")
+    );
+    assert_eq!(app.papers[0].authors.as_deref(), Some("Arute et al."));
+    assert_eq!(app.papers[0].journal.as_deref(), Some("Nature"));
+
+    let tags = app.tags_by_paper.get(&app.papers[0].id).unwrap();
+    assert_eq!(tags, &vec!["google".to_string(), "quantum".to_string()]);
+}
+
+#[test]
+fn test_path_autocomplete_in_modals() {
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    let target_file = dir.path().join("unique_target_paper.pdf");
+    std::fs::write(&target_file, b"test").unwrap();
+
+    let mut app = App::new();
+
+    // 1. In AddPaperModal
+    app.dispatch(Action::AddPaperModalOpen);
+    let prefix = format!("{}/unique_tar", dir.path().display());
+    app.add_paper_path_buffer = prefix;
+    app.dispatch(Action::AddPaperModalAutocomplete);
+    assert_eq!(
+        app.add_paper_path_buffer,
+        format!("{}/unique_target_paper.pdf", dir.path().display())
+    );
+
+    // 2. In ExportCollectionModal
+    app.dispatch(Action::ExportCollectionModalOpen);
+    let prefix_export = format!("{}/unique_tar", dir.path().display());
+    app.export_path_buffer = prefix_export;
+    app.dispatch(Action::ExportCollectionModalAutocomplete);
+    assert_eq!(
+        app.export_path_buffer,
+        format!("{}/unique_target_paper.pdf", dir.path().display())
+    );
+
+    // 3. In ImportMetadataModal
+    let json_file = dir.path().join("unique_meta.json");
+    std::fs::write(&json_file, b"{}").unwrap();
+
+    app.dispatch(Action::ImportMetadataModalOpen);
+    let prefix_meta = format!("{}/unique_met", dir.path().display());
+    app.import_metadata_buffer = prefix_meta;
+    app.dispatch(Action::ImportMetadataModalAutocomplete);
+    assert_eq!(
+        app.import_metadata_buffer,
+        format!("{}/unique_meta.json", dir.path().display())
+    );
+}

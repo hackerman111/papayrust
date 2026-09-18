@@ -29,7 +29,12 @@ pub fn render_collections(app: &App, frame: &mut Frame, area: Rect) {
         .map(|(idx, col)| {
             let is_selected = idx == app.selected_collection;
             let prefix = if is_selected { "> " } else { "  " };
-            let content = format!("{prefix}{} ({})", col.name, col.paper_count);
+            let tree_indent = if col.depth > 0 {
+                format!("{}└─ ", "  ".repeat(col.depth - 1))
+            } else {
+                String::new()
+            };
+            let content = format!("{prefix}{tree_indent}{} ({})", col.name, col.paper_count);
 
             let mut style = Style::default();
             if is_selected {

@@ -1,5 +1,6 @@
 use rusqlite::Connection;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use uuid::Uuid;
 
 use crate::app::{ActivePanel, App, CollectionItem};
 use papyrus_core::db::{CollectionRepo, PaperRepo, RepoError, TocRepo};
@@ -56,14 +57,25 @@ impl App {
                 tags_by_paper.insert(paper.id, tags);
             }
 
-            collections.push(CollectionItem::new(None, "All Papers", all_papers.len()));
+            collections.push(CollectionItem::with_hierarchy(
+                None,
+                "All Papers",
+                all_papers.len(),
+                0,
+                None,
+            ));
             papers_by_collection.insert(None, all_papers);
 
-            for col in db_collections {
+            let mut paper_counts = HashMap::new();
+            for col in &db_collections {
                 let papers = CollectionRepo::get_papers(conn, col.id)?;
-                collections.push(CollectionItem::new(Some(col.id), col.name, papers.len()));
+                paper_counts.insert(col.id, papers.len());
                 papers_by_collection.insert(Some(col.id), papers);
             }
+
+            let hierarchical_items =
+                build_hierarchical_collection_items(&db_collections, &paper_counts);
+            collections.extend(hierarchical_items);
 
             self.collections = collections;
             self.papers_by_collection = papers_by_collection;
@@ -100,16 +112,27 @@ impl App {
 
         // Include "All Papers" virtual collection if requested or if there are no DB collections
         if include_all_papers || db_collections.is_empty() {
-            collections.push(CollectionItem::new(None, "All Papers", all_papers.len()));
+            collections.push(CollectionItem::with_hierarchy(
+                None,
+                "All Papers",
+                all_papers.len(),
+                0,
+                None,
+            ));
             papers_by_collection.insert(None, all_papers);
         }
 
-        // Populate database collections
-        for col in db_collections {
+        // Populate database collections with hierarchy
+        let mut paper_counts = HashMap::new();
+        for col in &db_collections {
             let papers = CollectionRepo::get_papers(conn, col.id)?;
-            collections.push(CollectionItem::new(Some(col.id), col.name, papers.len()));
+            paper_counts.insert(col.id, papers.len());
             papers_by_collection.insert(Some(col.id), papers);
         }
+
+        let hierarchical_items =
+            build_hierarchical_collection_items(&db_collections, &paper_counts);
+        collections.extend(hierarchical_items);
 
         self.collections = collections;
         self.papers_by_collection = papers_by_collection;
@@ -169,6 +192,61 @@ impl App {
             } else if self.selected_toc >= self.toc_preview.len() {
                 self.selected_toc = self.toc_preview.len() - 1;
             }
+        }
+    }
+}
+
+/// Builds a depth-first hierarchically ordered list of `CollectionItem`s.
+pub fn build_hierarchical_collection_items(
+    db_collections: &[papyrus_core::db::Collection],
+    paper_counts: &HashMap<Uuid, usize>,
+) -> Vec<CollectionItem> {
+    let mut children_by_parent: HashMap<Option<Uuid>, Vec<&papyrus_core::db::Collection>> =
+        HashMap::new();
+    let known_ids: HashSet<Uuid> = db_collections.iter().map(|c| c.id).collect();
+
+    for col in db_collections {
+        let parent_key = match col.parent_id {
+            Some(pid) if known_ids.contains(&pid) => Some(pid),
+            _ => None,
+        };
+        children_by_parent.entry(parent_key).or_default().push(col);
+    }
+
+    // Sort children alphabetically by name (case-insensitive)
+    for children in children_by_parent.values_mut() {
+        children.sort_by_key(|a| a.name.to_lowercase());
+    }
+
+    let mut result = Vec::new();
+    if let Some(roots) = children_by_parent.get(&None) {
+        for root in roots {
+            append_collection_recursive(root, 0, &children_by_parent, paper_counts, &mut result);
+        }
+    }
+
+    result
+}
+
+fn append_collection_recursive(
+    col: &papyrus_core::db::Collection,
+    depth: usize,
+    children_by_parent: &HashMap<Option<Uuid>, Vec<&papyrus_core::db::Collection>>,
+    paper_counts: &HashMap<Uuid, usize>,
+    out: &mut Vec<CollectionItem>,
+) {
+    let count = paper_counts.get(&col.id).copied().unwrap_or(0);
+    out.push(CollectionItem::with_hierarchy(
+        Some(col.id),
+        &col.name,
+        count,
+        depth,
+        col.parent_id,
+    ));
+
+    if let Some(children) = children_by_parent.get(&Some(col.id)) {
+        for child in children {
+            append_collection_recursive(child, depth + 1, children_by_parent, paper_counts, out);
         }
     }
 }

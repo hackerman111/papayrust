@@ -11,6 +11,14 @@ pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
         format!(" {msg} | Tab: Switch panel | ?: Help | q: Quit")
     } else if app.is_showing_help {
         " Help Mode | Esc / q / ?: Close Help".to_string()
+    } else if app.is_renaming_collection {
+        " Rename Collection | Enter: Confirm | Esc: Cancel".to_string()
+    } else if app.is_exporting_collection {
+        " Export Collection | Enter: Export | Tab: Autocomplete | Esc: Cancel".to_string()
+    } else if app.is_importing_metadata {
+        " Import Metadata | Enter: Import | Tab: Autocomplete | Esc: Cancel".to_string()
+    } else if app.is_adding_paper {
+        " Add Paper | Enter: Import | Tab: Autocomplete | Esc: Cancel".to_string()
     } else if app.is_viewing_fullscreen_toc {
         " Fullscreen TOC | j/k: Scroll | Enter: Jump to page | Esc/q/t: Exit TOC | ?: Help"
             .to_string()
@@ -30,15 +38,15 @@ pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
     } else {
         match app.active_panel {
             ActivePanel::Collections => {
-                " [Collections] j/k: Navigate | a: New folder | d: Delete | Tab/BackTab: Switch panel | /: Search | ?: Help | q: Quit"
+                " [Collections] j/k: Nav | a/A: New/Sub | r: Rename | E: Export | d: Del | Tab/BackTab: Switch | ?: Help | q: Quit"
                     .to_string()
             }
             ActivePanel::Papers => {
-                " [Papers] j/k: Navigate | Enter/o: Open | t: Fullscreen TOC | T: Tags | a: Add | e: Edit | d: Delete | Tab/BackTab: Switch panel | /: Search | ?: Help | q: Quit"
+                " [Papers] j/k: Nav | Enter: Open | t: TOC | T: Tags | a: Add | e: Edit | m: JSON | d: Del | Tab/BackTab: Switch | ?: Help | q: Quit"
                     .to_string()
             }
             ActivePanel::Details => {
-                " [Details/TOC] j/k: Navigate | Enter: Jump to page | t: Fullscreen | a: Add | e: Edit | d: Delete | H/L: Indent | Tab/BackTab: Switch panel | ?: Help | q: Quit"
+                " [Details/TOC] j/k: Nav | Enter: Jump | t: Fullscreen | a/e/d: Edit | H/L: Indent | Tab/BackTab: Switch | ?: Help | q: Quit"
                     .to_string()
             }
         }
