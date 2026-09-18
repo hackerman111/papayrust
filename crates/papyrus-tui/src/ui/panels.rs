@@ -97,7 +97,25 @@ pub fn render_papers(app: &App, frame: &mut Frame, area: Rect) {
         .enumerate()
         .map(|(idx, paper)| {
             let is_selected = idx == app.selected_paper;
-            let prefix = if is_selected { "> " } else { "  " };
+            let is_visual_selected =
+                app.visual_mode && app.visual_selected_uuids.contains(&paper.id);
+            let prefix = if app.visual_mode {
+                if is_visual_selected {
+                    if is_selected {
+                        "> [x] "
+                    } else {
+                        "  [x] "
+                    }
+                } else if is_selected {
+                    "> [ ] "
+                } else {
+                    "  [ ] "
+                }
+            } else if is_selected {
+                "> "
+            } else {
+                "  "
+            };
             let tags_badge = app
                 .tags_by_paper
                 .get(&paper.id)
@@ -117,6 +135,9 @@ pub fn render_papers(app: &App, frame: &mut Frame, area: Rect) {
                 .unwrap_or_else(|| "-".to_string());
 
             let mut style = Style::default();
+            if is_visual_selected {
+                style = style.bg(Color::Rgb(25, 45, 75));
+            }
             if is_selected {
                 if app.active_panel == ActivePanel::Papers {
                     style = style.fg(Color::Yellow).add_modifier(Modifier::BOLD);

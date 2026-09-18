@@ -2208,3 +2208,50 @@ fn test_batch_delete_in_visual_mode() {
     assert_eq!(app.papers.len(), 1);
     assert_eq!(app.papers[0].id, p3.id);
 }
+
+#[test]
+fn test_render_visual_mode_and_generic_picker() {
+    let col = CollectionItem::new(None, "All Papers", 2);
+    let p1 = dummy_paper("Attention Is All You Need", "Vaswani et al.", 2017);
+    let p2 = dummy_paper("BERT", "Devlin et al.", 2018);
+    let mut map = HashMap::new();
+    map.insert(None, vec![p1.clone(), p2.clone()]);
+
+    let mut app = App::with_data(vec![col], map, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+    app.selected_paper = 0;
+
+    // 1. Render in visual mode
+    app.enter_visual_mode();
+    let backend = ratatui::backend::TestBackend::new(120, 30);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|f| crate::ui::render(&app, f)).unwrap();
+
+    let buffer = terminal.backend().buffer();
+    let mut rendered = String::new();
+    for y in 0..buffer.area.height {
+        for x in 0..buffer.area.width {
+            rendered.push_str(buffer[(x, y)].symbol());
+        }
+        rendered.push('\n');
+    }
+    assert!(rendered.contains("[x] Attention Is All You"));
+    assert!(rendered.contains("[ ] BERT"));
+    assert!(rendered.contains("-- VISUAL (1 selected) --"));
+
+    // 2. Render with active picker
+    app.open_quick_open();
+    assert!(app.active_picker.is_some());
+
+    terminal.draw(|f| crate::ui::render(&app, f)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let mut rendered_picker = String::new();
+    for y in 0..buffer.area.height {
+        for x in 0..buffer.area.width {
+            rendered_picker.push_str(buffer[(x, y)].symbol());
+        }
+        rendered_picker.push('\n');
+    }
+    assert!(rendered_picker.contains("Quick Open (Ctrl-p)"));
+    assert!(rendered_picker.contains("Search Query"));
+}

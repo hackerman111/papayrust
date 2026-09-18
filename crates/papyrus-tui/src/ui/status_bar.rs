@@ -16,6 +16,20 @@ pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
 
     let base_content = if let Some(ref msg) = app.status_message {
         format!("{msg} | Tab/h/l: Panels | ?: Help | q: Quit")
+    } else if let Some(ref picker) = app.active_picker {
+        if picker.multi_select {
+            format!(
+                "[{}] Space: Toggle | j/k: Move | Enter: Confirm | Esc: Cancel",
+                picker.title
+            )
+        } else {
+            format!("[{}] j/k: Move | Enter: Select | Esc: Cancel", picker.title)
+        }
+    } else if app.visual_mode {
+        format!(
+            "-- VISUAL ({} selected) -- | c: Collections | t: Tags | d: Delete | Space: Toggle | Esc: Cancel",
+            app.visual_selected_uuids.len()
+        )
     } else if app.is_showing_help {
         "Help Mode | Esc / q / ?: Close Help".to_string()
     } else if app.is_renaming_collection {
@@ -49,7 +63,7 @@ pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
                     .to_string()
             }
             ActivePanel::Papers => {
-                "[Papers] h/l: Focus | j/k: Nav | Enter: Open | S: Sort | t: TOC | a: Add | d: Del | Tab/BackTab | ?: Help | q: Quit"
+                "[Papers] h/l: Focus | j/k: Nav | Enter: Open | Ctrl-p: QuickOpen | c: Col | t: Tags | V: Visual | S: Sort | Tab | ?: Help | q: Quit"
                     .to_string()
             }
             ActivePanel::Details => {
