@@ -1,0 +1,38 @@
+[package]
+name = "papyrus-tui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+papyrus-core = { path = "../papyrus-core" }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+uuid = { workspace = true }
+rusqlite = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+lopdf = { workspace = true }
+sha2 = { workspace = true }
+serde_json = { workspace = true }
+
+[[test]]
+name = "phase3_tui"
+path = "../../tests/phase3_tui.rs"
+
+[[test]]
+name = "phase4_viewer"
+path = "../../tests/phase4_viewer.rs"
+
+[[test]]
+name = "phase6_metadata"
+path = "../../tests/phase6_metadata.rs"
+
+[[test]]
+name = "phase7_toc"
+path = "../../tests/phase7_toc.rs"
+
+

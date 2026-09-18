@@ -1,0 +1,48 @@
+[package]
+name = "papyrus-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rusqlite = { workspace = true }
+lopdf = { workspace = true }
+pdf-extract = { workspace = true }
+sha2 = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tantivy = { workspace = true }
+zip = { workspace = true }
+libc = { workspace = true }
+
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[[test]]
+name = "phase0_bootstrap"
+path = "../../tests/phase0_bootstrap.rs"
+
+[[test]]
+name = "phase1_storage"
+path = "../../tests/phase1_storage.rs"
+
+[[test]]
+name = "phase2_import"
+path = "../../tests/phase2_import.rs"
+
+[[test]]
+name = "phase5_search"
+path = "../../tests/phase5_search.rs"
+
+[[test]]
+name = "phase8_export"
+path = "../../tests/phase8_export.rs"
+
+[[test]]
+name = "phase10_doctor"
+path = "../../tests/phase10_doctor.rs"

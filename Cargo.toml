@@ -1,0 +1,48 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/papyrus-core",
+    "crates/papyrus-tui",
+    "crates/papyrus-cli",
+]
+
+[workspace.dependencies]
+# Storage
+rusqlite = { version = "0.32", default-features = false, features = ["bundled", "backup", "functions"] }
+
+# Search
+tantivy = { version = "0.22", default-features = false, features = ["mmap", "stopwords", "lz4-compression"] }
+
+# Archive
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# PDF & Text
+lopdf = "0.34"
+pdf-extract = "0.7"
+
+# Hashing & Identifiers
+sha2 = "0.10"
+uuid = { version = "1.11", features = ["v7", "serde"] }
+
+# Async & Runtime
+tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "fs", "sync"] }
+
+# Serialization & Config & CLI
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+clap = { version = "4.5", features = ["derive"] }
+
+# Errors & Diagnostics
+thiserror = "2.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+libc = "0.2"
+
+# Testing utilities
+tempfile = "3.12"
