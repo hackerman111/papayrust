@@ -29,6 +29,24 @@ impl ActivePanel {
         }
     }
 
+    /// Moves focus to the left panel (clamped at Collections).
+    pub fn left(self) -> Self {
+        match self {
+            Self::Collections => Self::Collections,
+            Self::Papers => Self::Collections,
+            Self::Details => Self::Papers,
+        }
+    }
+
+    /// Moves focus to the right panel (clamped at Details).
+    pub fn right(self) -> Self {
+        match self {
+            Self::Collections => Self::Papers,
+            Self::Papers => Self::Details,
+            Self::Details => Self::Details,
+        }
+    }
+
     /// Name of the panel for display or debugging.
     pub fn name(self) -> &'static str {
         match self {

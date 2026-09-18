@@ -133,12 +133,16 @@ impl App {
             self.selected_paper = 0;
             self.selection.paper_id = None;
         } else {
-            let key = self.collections[self.selected_collection].id;
-            self.papers = self
-                .papers_by_collection
-                .get(&key)
-                .cloned()
-                .unwrap_or_default();
+            if !self.search_query.trim().is_empty() {
+                self.apply_search_filter();
+            } else {
+                let key = self.collections[self.selected_collection].id;
+                self.papers = self
+                    .papers_by_collection
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_default();
+            }
 
             // 3. Restore paper
             if self.papers.is_empty() {

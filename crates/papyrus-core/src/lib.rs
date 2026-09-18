@@ -13,7 +13,7 @@ pub mod search;
 pub mod time;
 pub mod toc;
 
-pub use action::{Action, TocImportSource};
+pub use action::{Action, Motion, TocImportSource};
 pub use doctor::{check_database, check_files, run_doctor, DoctorReport, DoctorVerdict};
 pub use export::{
     export_collection, export_library, ExportError, ExportOptions, ExportResult, Manifest,

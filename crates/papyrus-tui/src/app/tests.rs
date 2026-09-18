@@ -1115,3 +1115,593 @@ fn test_delete_fallback_selection() {
     assert_eq!(app.selected_toc, 0);
     assert_eq!(app.selection.toc_id, None);
 }
+
+#[test]
+fn test_h_l_clamping_and_tab_backtab_cycling() {
+    let mut app = App::new();
+    assert_eq!(app.active_panel, ActivePanel::Collections);
+
+    // 'h' at Collections is clamped at Collections
+    app.dispatch(Action::PanelLeft);
+    assert_eq!(app.active_panel, ActivePanel::Collections);
+
+    // 'l' moves to Papers
+    app.dispatch(Action::PanelRight);
+    assert_eq!(app.active_panel, ActivePanel::Papers);
+
+    // 'l' moves to Details
+    app.dispatch(Action::PanelRight);
+    assert_eq!(app.active_panel, ActivePanel::Details);
+
+    // 'l' at Details is clamped at Details
+    app.dispatch(Action::PanelRight);
+    assert_eq!(app.active_panel, ActivePanel::Details);
+
+    // 'h' moves back to Papers
+    app.dispatch(Action::PanelLeft);
+    assert_eq!(app.active_panel, ActivePanel::Papers);
+
+    // 'h' moves back to Collections
+    app.dispatch(Action::PanelLeft);
+    assert_eq!(app.active_panel, ActivePanel::Collections);
+
+    // Tab cycles: Collections -> Papers -> Details -> Collections
+    app.dispatch(Action::NextPanel);
+    assert_eq!(app.active_panel, ActivePanel::Papers);
+    app.dispatch(Action::NextPanel);
+    assert_eq!(app.active_panel, ActivePanel::Details);
+    app.dispatch(Action::NextPanel);
+    assert_eq!(app.active_panel, ActivePanel::Collections);
+
+    // BackTab cycles in reverse: Collections -> Details -> Papers -> Collections
+    app.dispatch(Action::PreviousPanel);
+    assert_eq!(app.active_panel, ActivePanel::Details);
+    app.dispatch(Action::PreviousPanel);
+    assert_eq!(app.active_panel, ActivePanel::Papers);
+    app.dispatch(Action::PreviousPanel);
+    assert_eq!(app.active_panel, ActivePanel::Collections);
+}
+
+#[test]
+fn test_enter_in_collections_focuses_papers() {
+    let mut app = App::new();
+    app.active_panel = ActivePanel::Collections;
+    app.layout_mode = LayoutMode::MultiPanel;
+
+    // In MultiPanel mode, Enter focuses Papers
+    let enter = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let action = crate::event::map_key_event_for_app(enter, &app);
+    assert_eq!(action, Some(Action::FocusPapers));
+
+    app.dispatch(action.unwrap());
+    assert_eq!(app.active_panel, ActivePanel::Papers);
+    assert_eq!(app.layout_mode, LayoutMode::MultiPanel);
+
+    // In SinglePanel mode, Enter focuses Papers and visible panel will be Papers
+    app.active_panel = ActivePanel::Collections;
+    app.layout_mode = LayoutMode::SinglePanel;
+
+    let action = crate::event::map_key_event_for_app(enter, &app);
+    assert_eq!(action, Some(Action::FocusPapers));
+
+    app.dispatch(action.unwrap());
+    assert_eq!(app.active_panel, ActivePanel::Papers);
+    assert_eq!(app.layout_mode, LayoutMode::SinglePanel);
+}
+
+#[test]
+fn test_all_motion_variants() {
+    let col = CollectionItem::new(None, "All Papers", 5);
+    let p0 = dummy_paper("P0", "A0", 2020);
+    let p1 = dummy_paper("P1", "A1", 2021);
+    let p2 = dummy_paper("P2", "A2", 2022);
+    let p3 = dummy_paper("P3", "A3", 2023);
+    let p4 = dummy_paper("P4", "A4", 2024);
+
+    let mut map = HashMap::new();
+    map.insert(None, vec![p0, p1, p2, p3, p4]);
+    let mut app = App::with_data(vec![col], map, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+    assert_eq!(app.selected_paper, 0);
+
+    // Relative(2) -> index 2
+    app.dispatch(Action::Motion(Motion::Relative(2)));
+    assert_eq!(app.selected_paper, 2);
+
+    // Relative(-1) -> index 1
+    app.dispatch(Action::Motion(Motion::Relative(-1)));
+    assert_eq!(app.selected_paper, 1);
+
+    // First -> index 0
+    app.dispatch(Action::Motion(Motion::First));
+    assert_eq!(app.selected_paper, 0);
+
+    // Last -> index 4
+    app.dispatch(Action::Motion(Motion::Last));
+    assert_eq!(app.selected_paper, 4);
+
+    // Absolute(3) (1-based index 3 -> 0-based index 2)
+    app.dispatch(Action::Motion(Motion::Absolute(3)));
+    assert_eq!(app.selected_paper, 2);
+
+    // Absolute(0) -> 0
+    app.dispatch(Action::Motion(Motion::Absolute(0)));
+    assert_eq!(app.selected_paper, 0);
+
+    // Absolute(999) -> clamped to 4
+    app.dispatch(Action::Motion(Motion::Absolute(999)));
+    assert_eq!(app.selected_paper, 4);
+
+    // HalfPageUp -> clamped to 0
+    app.dispatch(Action::Motion(Motion::HalfPageUp));
+    assert_eq!(app.selected_paper, 0);
+
+    // HalfPageDown -> clamped to 4
+    app.dispatch(Action::Motion(Motion::HalfPageDown));
+    assert_eq!(app.selected_paper, 4);
+}
+
+#[test]
+fn test_vim_motions_gg_g_ctrl_d_u() {
+    let col = CollectionItem::new(None, "All Papers", 25);
+    let papers: Vec<Paper> = (0..25)
+        .map(|i| dummy_paper(&format!("Paper {i}"), "Author", 2000 + i))
+        .collect();
+    let mut map = HashMap::new();
+    map.insert(None, papers);
+
+    let mut app = App::with_data(vec![col], map, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+    assert_eq!(app.selected_paper, 0);
+
+    // Press 'G' -> moves to last item (index 24)
+    let g_upper = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('G'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act = crate::event::map_key_event_for_app(g_upper, &app);
+    assert_eq!(act, Some(Action::Motion(Motion::Last)));
+    app.dispatch(act.unwrap());
+    assert_eq!(app.selected_paper, 24);
+
+    // Press 'g' once -> sets pending chord 'g'
+    let g_lower = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('g'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act = crate::event::map_key_event_for_app(g_lower, &app);
+    assert_eq!(act, Some(Action::PendingChord('g')));
+    app.dispatch(act.unwrap());
+    assert_eq!(app.pending_chord, Some('g'));
+
+    // Press 'g' second time -> moves to first item (index 0)
+    let act = crate::event::map_key_event_for_app(g_lower, &app);
+    assert_eq!(act, Some(Action::Motion(Motion::First)));
+    app.dispatch(act.unwrap());
+    assert_eq!(app.selected_paper, 0);
+    assert_eq!(app.pending_chord, None);
+
+    // Ctrl-d -> half page down (step 10) -> index 10
+    let ctrl_d = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('d'),
+        crossterm::event::KeyModifiers::CONTROL,
+    );
+    let act = crate::event::map_key_event_for_app(ctrl_d, &app);
+    assert_eq!(act, Some(Action::Motion(Motion::HalfPageDown)));
+    app.dispatch(act.unwrap());
+    assert_eq!(app.selected_paper, 10);
+
+    // Ctrl-u -> half page up (step 10) -> index 0
+    let ctrl_u = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('u'),
+        crossterm::event::KeyModifiers::CONTROL,
+    );
+    let act = crate::event::map_key_event_for_app(ctrl_u, &app);
+    assert_eq!(act, Some(Action::Motion(Motion::HalfPageUp)));
+    app.dispatch(act.unwrap());
+    assert_eq!(app.selected_paper, 0);
+}
+
+#[test]
+fn test_count_prefixes_and_reset() {
+    let col = CollectionItem::new(None, "All Papers", 30);
+    let papers: Vec<Paper> = (0..30)
+        .map(|i| dummy_paper(&format!("Paper {i}"), "Author", 2000 + i))
+        .collect();
+    let mut map = HashMap::new();
+    map.insert(None, papers);
+
+    let mut app = App::with_data(vec![col], map, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+    assert_eq!(app.selected_paper, 0);
+
+    // '5' then 'j' -> moves down 5
+    let key_5 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('5'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act = crate::event::map_key_event_for_app(key_5, &app);
+    assert_eq!(act, Some(Action::CountDigit(5)));
+    app.dispatch(act.unwrap());
+    assert_eq!(app.pending_count, Some(5));
+
+    let key_j = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('j'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act = crate::event::map_key_event_for_app(key_j, &app);
+    assert_eq!(act, Some(Action::MoveDown));
+    app.dispatch(act.unwrap());
+    assert_eq!(app.selected_paper, 5);
+    assert_eq!(app.pending_count, None);
+
+    // '1', '0', 'k' -> moves up 10 (clamped to 0)
+    let key_1 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('1'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    app.dispatch(crate::event::map_key_event_for_app(key_1, &app).unwrap());
+    let key_0 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('0'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    app.dispatch(crate::event::map_key_event_for_app(key_0, &app).unwrap());
+    assert_eq!(app.pending_count, Some(10));
+
+    let key_k = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('k'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    app.dispatch(crate::event::map_key_event_for_app(key_k, &app).unwrap());
+    assert_eq!(app.selected_paper, 0);
+    assert_eq!(app.pending_count, None);
+
+    // '2', '0', 'G' -> moves to 1-based line 20 (0-based index 19)
+    let key_2 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('2'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    app.dispatch(crate::event::map_key_event_for_app(key_2, &app).unwrap());
+    app.dispatch(crate::event::map_key_event_for_app(key_0, &app).unwrap());
+    assert_eq!(app.pending_count, Some(20));
+
+    let key_g_upper = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('G'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act = crate::event::map_key_event_for_app(key_g_upper, &app);
+    assert_eq!(act, Some(Action::Motion(Motion::Absolute(20))));
+    app.dispatch(act.unwrap());
+    assert_eq!(app.selected_paper, 19);
+    assert_eq!(app.pending_count, None);
+
+    // Count reset upon Esc
+    app.dispatch(Action::CountDigit(7));
+    assert_eq!(app.pending_count, Some(7));
+    let esc = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Esc,
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act = crate::event::map_key_event_for_app(esc, &app);
+    assert_eq!(act, Some(Action::ResetNavigationState));
+    app.dispatch(act.unwrap());
+    assert_eq!(app.pending_count, None);
+
+    // Chord reset upon Esc
+    app.dispatch(Action::PendingChord('g'));
+    assert_eq!(app.pending_chord, Some('g'));
+    let act = crate::event::map_key_event_for_app(esc, &app);
+    assert_eq!(act, Some(Action::ResetNavigationState));
+    app.dispatch(act.unwrap());
+    assert_eq!(app.pending_chord, None);
+}
+
+#[test]
+fn test_layout_mode_toggle_and_esc_return() {
+    let mut app = App::new();
+    assert_eq!(app.layout_mode, LayoutMode::MultiPanel);
+
+    // Ctrl-w toggles to SinglePanel
+    let ctrl_w = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('w'),
+        crossterm::event::KeyModifiers::CONTROL,
+    );
+    let act = crate::event::map_key_event_for_app(ctrl_w, &app);
+    assert_eq!(act, Some(Action::ToggleLayoutMode));
+    app.dispatch(act.unwrap());
+    assert_eq!(app.layout_mode, LayoutMode::SinglePanel);
+
+    // Ctrl-w toggles back to MultiPanel
+    app.dispatch(Action::ToggleLayoutMode);
+    assert_eq!(app.layout_mode, LayoutMode::MultiPanel);
+
+    // Esc returns from SinglePanel when search query is empty and no modals open
+    app.layout_mode = LayoutMode::SinglePanel;
+    let esc = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Esc,
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act = crate::event::map_key_event_for_app(esc, &app);
+    assert_eq!(act, Some(Action::ToggleLayoutMode));
+    app.dispatch(act.unwrap());
+    assert_eq!(app.layout_mode, LayoutMode::MultiPanel);
+}
+
+#[test]
+fn test_paper_sorting_cycles_and_uuid_selection_preservation() {
+    let col = CollectionItem::new(None, "All Papers", 4);
+    let mut p1 = dummy_paper("Alpha", "Author C", 2020);
+    p1.created_at = "2024-01-01T00:00:00Z".to_string();
+    let mut p2 = dummy_paper("Beta", "Author A", 2022);
+    p2.created_at = "2024-01-03T00:00:00Z".to_string();
+    let mut p3 = dummy_paper("Gamma", "Author D", 2019);
+    p3.created_at = "2024-01-02T00:00:00Z".to_string();
+    let mut p4 = dummy_paper("Delta", "Author B", 2021);
+    p4.created_at = "2024-01-04T00:00:00Z".to_string();
+
+    let p2_id = p2.id;
+
+    let mut map = HashMap::new();
+    map.insert(None, vec![p1, p2, p3, p4]);
+
+    let mut app = App::with_data(vec![col], map, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+
+    // Set initial sort to Added Desc
+    app.sort_field = PaperSortField::Added;
+    app.sort_direction = SortDirection::Desc;
+    app.sort_current_papers();
+
+    // Select Beta (p2_id)
+    let p2_idx = app.papers.iter().position(|p| p.id == p2_id).unwrap();
+    app.selected_paper = p2_idx;
+    app.update_selection_from_indices();
+    assert_eq!(app.selection.paper_id, Some(p2_id));
+
+    // Cycle 1: Added (Desc) -> Year (Desc)
+    let s_key = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('S'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act = crate::event::map_key_event_for_app(s_key, &app);
+    assert_eq!(act, Some(Action::CyclePaperSort));
+    app.dispatch(act.unwrap());
+
+    assert_eq!(app.sort_field, PaperSortField::Year);
+    assert_eq!(app.sort_direction, SortDirection::Desc);
+    assert_eq!(app.sort_field.badge(app.sort_direction), "Year↓");
+    // In Year Desc: 2022 (Beta), 2021 (Delta), 2020 (Alpha), 2019 (Gamma)
+    assert_eq!(app.papers[0].id, p2_id);
+    assert_eq!(app.selected_paper, 0);
+    assert_eq!(app.selection.paper_id, Some(p2_id));
+
+    // Cycle 2: Year (Desc) -> Title (Asc)
+    app.dispatch(Action::CyclePaperSort);
+    assert_eq!(app.sort_field, PaperSortField::Title);
+    assert_eq!(app.sort_direction, SortDirection::Asc);
+    assert_eq!(app.sort_field.badge(app.sort_direction), "Title↑");
+    // In Title Asc: Alpha (0), Beta (1), Delta (2), Gamma (3)
+    assert_eq!(app.papers[1].id, p2_id);
+    assert_eq!(app.selected_paper, 1);
+    assert_eq!(app.selection.paper_id, Some(p2_id));
+
+    // Cycle 3: Title (Asc) -> Author (Asc)
+    app.dispatch(Action::CyclePaperSort);
+    assert_eq!(app.sort_field, PaperSortField::Author);
+    assert_eq!(app.sort_direction, SortDirection::Asc);
+    assert_eq!(app.sort_field.badge(app.sort_direction), "Author↑");
+    // In Author Asc: Author A (Beta, idx 0), Author B (Delta, idx 1), Author C (Alpha, idx 2), Author D (Gamma, idx 3)
+    assert_eq!(app.papers[0].id, p2_id);
+    assert_eq!(app.selected_paper, 0);
+    assert_eq!(app.selection.paper_id, Some(p2_id));
+
+    // Cycle 4: Author (Asc) -> Added (Desc)
+    app.dispatch(Action::CyclePaperSort);
+    assert_eq!(app.sort_field, PaperSortField::Added);
+    assert_eq!(app.sort_direction, SortDirection::Desc);
+    assert_eq!(app.sort_field.badge(app.sort_direction), "Added↓");
+    // Selection UUID still preserved
+    assert_eq!(app.selection.paper_id, Some(p2_id));
+    assert_eq!(app.papers[app.selected_paper].id, p2_id);
+}
+
+#[test]
+fn test_breadcrumb_generation_and_indicators() {
+    let id_root = Uuid::new_v4();
+    let id_child = Uuid::new_v4();
+    let id_grandchild = Uuid::new_v4();
+
+    let root_item = CollectionItem::with_hierarchy(Some(id_root), "Computer Science", 10, 0, None);
+    let child_item =
+        CollectionItem::with_hierarchy(Some(id_child), "Machine Learning", 6, 1, Some(id_root));
+    let grandchild_item =
+        CollectionItem::with_hierarchy(Some(id_grandchild), "Deep Learning", 3, 2, Some(id_child));
+
+    let mut app = App::new();
+    app.collections = vec![root_item, child_item, grandchild_item];
+    app.update_breadcrumbs();
+
+    assert_eq!(
+        app.collection_breadcrumbs
+            .get(&CollectionKey::Real(id_grandchild))
+            .map(String::as_str),
+        Some("Computer Science / Machine Learning / Deep Learning")
+    );
+    assert_eq!(
+        app.collection_breadcrumbs
+            .get(&CollectionKey::Real(id_child))
+            .map(String::as_str),
+        Some("Computer Science / Machine Learning")
+    );
+    assert_eq!(
+        app.collection_breadcrumbs
+            .get(&CollectionKey::Real(id_root))
+            .map(String::as_str),
+        Some("Computer Science")
+    );
+
+    // Test render indicators
+    let backend = ratatui::backend::TestBackend::new(120, 30);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|f| crate::ui::render(&app, f)).unwrap();
+
+    let buffer = terminal.backend().buffer();
+    let mut rendered = String::new();
+    for y in 0..buffer.area.height {
+        for x in 0..buffer.area.width {
+            rendered.push_str(buffer[(x, y)].symbol());
+        }
+        rendered.push('\n');
+    }
+    assert!(rendered.contains("Collections · 1/3"));
+}
+
+#[test]
+fn test_esc_in_single_panel_search_cancels_search_cleanly() {
+    let mut app = App::new();
+    app.layout_mode = LayoutMode::SinglePanel;
+    app.is_searching = true;
+    app.search_query.clear();
+
+    // Esc while searching in SinglePanel with empty query
+    let esc = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Esc,
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act = crate::event::map_key_event_for_app(esc, &app);
+    assert_eq!(act, Some(Action::SearchCancel));
+
+    app.dispatch(act.unwrap());
+    assert!(
+        !app.is_searching,
+        "is_searching must be false after SearchCancel"
+    );
+    assert_eq!(
+        app.layout_mode,
+        LayoutMode::SinglePanel,
+        "layout_mode should remain SinglePanel on search cancel"
+    );
+
+    // Pressing Esc again while in normal mode SinglePanel toggles layout to MultiPanel
+    let act2 = crate::event::map_key_event_for_app(esc, &app);
+    assert_eq!(act2, Some(Action::ToggleLayoutMode));
+    app.dispatch(act2.unwrap());
+    assert_eq!(app.layout_mode, LayoutMode::MultiPanel);
+}
+
+#[test]
+fn test_navigating_collections_applies_active_sort() {
+    let col1_id = Uuid::new_v4();
+    let col2_id = Uuid::new_v4();
+    let col1 = CollectionItem::new(Some(col1_id), "Col 1", 2);
+    let col2 = CollectionItem::new(Some(col2_id), "Col 2", 3);
+
+    let p1 = dummy_paper("Col1 Paper 2020", "Author A", 2020);
+    let p2 = dummy_paper("Col1 Paper 2022", "Author B", 2022);
+
+    let p3 = dummy_paper("Col2 Paper 2018", "Author C", 2018);
+    let p4 = dummy_paper("Col2 Paper 2023", "Author D", 2023);
+    let p5 = dummy_paper("Col2 Paper 2021", "Author E", 2021);
+
+    let mut map = HashMap::new();
+    map.insert(Some(col1_id), vec![p1, p2]);
+    map.insert(Some(col2_id), vec![p3, p4, p5]);
+
+    let mut app = App::with_data(vec![col1, col2], map, HashMap::new());
+    app.active_panel = ActivePanel::Collections;
+    app.sort_field = PaperSortField::Year;
+    app.sort_direction = SortDirection::Desc;
+
+    // Initially at collection 0
+    assert_eq!(app.selected_collection, 0);
+
+    // Navigate down to collection 1
+    app.dispatch(Action::MoveDown);
+    assert_eq!(app.selected_collection, 1);
+
+    // Verify papers in collection 2 are sorted according to Year Desc: 2023, 2021, 2018
+    assert_eq!(app.papers.len(), 3);
+    assert_eq!(app.papers[0].year, Some(2023));
+    assert_eq!(app.papers[1].year, Some(2021));
+    assert_eq!(app.papers[2].year, Some(2018));
+}
+
+#[test]
+fn test_cycle_sort_preserves_search_filter() {
+    let col = CollectionItem::new(None, "All Papers", 4);
+    let p1 = dummy_paper("Alpha ML", "Author C", 2020);
+    let p2 = dummy_paper("Beta AI", "Author A", 2022);
+    let p3 = dummy_paper("Gamma ML", "Author D", 2019);
+    let p4 = dummy_paper("Delta Systems", "Author B", 2021);
+
+    let mut map = HashMap::new();
+    map.insert(None, vec![p1, p2, p3, p4]);
+
+    let mut app = App::with_data(vec![col], map, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+
+    // Search for "ML"
+    app.dispatch(Action::Search);
+    for c in "ml".chars() {
+        app.dispatch(Action::SearchInput(c));
+    }
+    app.dispatch(Action::SearchConfirm);
+
+    assert_eq!(app.papers.len(), 2);
+    assert_eq!(app.search_query, "ml");
+
+    // Press S to cycle sort (Added Desc -> Year Desc)
+    app.dispatch(Action::CyclePaperSort);
+    assert_eq!(app.sort_field, PaperSortField::Year);
+    assert_eq!(app.sort_direction, SortDirection::Desc);
+
+    // The search filter must NOT be discarded! Still only 2 papers matching "ml"
+    assert_eq!(app.papers.len(), 2);
+    // Year Desc: Alpha (2020) then Gamma (2019)
+    assert_eq!(app.papers[0].title.as_deref(), Some("Alpha ML"));
+    assert_eq!(app.papers[1].title.as_deref(), Some("Gamma ML"));
+}
+
+#[test]
+fn test_count_prefix_with_gg_chord() {
+    let col = CollectionItem::new(None, "All Papers", 10);
+    let papers: Vec<Paper> = (0..10)
+        .map(|i| dummy_paper(&format!("Paper {i}"), "Author", 2000 + i))
+        .collect();
+    let mut map = HashMap::new();
+    map.insert(None, papers);
+
+    let mut app = App::with_data(vec![col], map, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+    assert_eq!(app.selected_paper, 0);
+
+    // Type '5'
+    let key_5 = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('5'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    app.dispatch(crate::event::map_key_event_for_app(key_5, &app).unwrap());
+    assert_eq!(app.pending_count, Some(5));
+
+    // Type first 'g'
+    let key_g = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('g'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act1 = crate::event::map_key_event_for_app(key_g, &app);
+    assert_eq!(act1, Some(Action::PendingChord('g')));
+    app.dispatch(act1.unwrap());
+    assert_eq!(app.pending_chord, Some('g'));
+    assert_eq!(app.pending_count, Some(5));
+
+    // Type second 'g' -> 5gg jumps to 5th item (1-based 5 => index 4)
+    let act2 = crate::event::map_key_event_for_app(key_g, &app);
+    assert_eq!(act2, Some(Action::Motion(Motion::Absolute(5))));
+    app.dispatch(act2.unwrap());
+    assert_eq!(app.selected_paper, 4);
+    assert_eq!(app.pending_chord, None);
+    assert_eq!(app.pending_count, None);
+}

@@ -42,6 +42,18 @@ pub fn render(app: &App, frame: &mut Frame) {
 
     if app.is_viewing_fullscreen_toc {
         render_fullscreen_toc(app, frame, vertical_chunks[0]);
+    } else if app.layout_mode == crate::app::LayoutMode::SinglePanel {
+        match app.active_panel {
+            crate::app::ActivePanel::Collections => {
+                render_collections(app, frame, vertical_chunks[0]);
+            }
+            crate::app::ActivePanel::Papers => {
+                render_papers(app, frame, vertical_chunks[0]);
+            }
+            crate::app::ActivePanel::Details => {
+                render_details(app, frame, vertical_chunks[0]);
+            }
+        }
     } else {
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)

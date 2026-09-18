@@ -658,8 +658,8 @@ pub fn render_delete_confirm_modal(app: &App, frame: &mut Frame) {
 /// Renders the full keyboard shortcuts and help dialog.
 pub fn render_help_modal(_app: &App, frame: &mut Frame) {
     let frame_area = frame.area();
-    let modal_height = 24.min(frame_area.height);
-    let modal_width = 78.max(frame_area.width / 2).min(frame_area.width);
+    let modal_height = 25.min(frame_area.height);
+    let modal_width = 86.max(frame_area.width / 2).min(frame_area.width);
 
     let x = frame_area.width.saturating_sub(modal_width) / 2;
     let y = frame_area.height.saturating_sub(modal_height) / 2;
@@ -687,7 +687,16 @@ pub fn render_help_modal(_app: &App, frame: &mut Frame) {
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw("Tab/Shift+Tab switch panel | / search | ? help | q quit"),
+            Span::raw("Tab/Shift+Tab / h/l panel | Ctrl-w toggle layout | / search | ? help | q quit"),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "Motions: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("j/k move | gg/G first/last | Ctrl-d/u half page | [count] prefix (e.g. 5j, 12G)"),
         ]),
         Line::from(""),
         Line::from(vec![
@@ -698,7 +707,7 @@ pub fn render_help_modal(_app: &App, frame: &mut Frame) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(
-                "j/k move | a new root | A subcollection | r rename | E export ZIP | d delete",
+                "j/k move | Enter focus papers | a new root | A subcollection | r rename | E export | d delete",
             ),
         ]),
         Line::from(vec![
@@ -708,7 +717,7 @@ pub fn render_help_modal(_app: &App, frame: &mut Frame) {
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw("j/k move | Enter/o open PDF | t fullscreen TOC | T edit tags"),
+            Span::raw("j/k move | Enter/o open | S sort | t fullscreen TOC | T edit tags"),
         ]),
         Line::from(vec![
             Span::raw("              "),

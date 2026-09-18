@@ -17,8 +17,15 @@ pub fn render_collections(app: &App, frame: &mut Frame, area: Rect) {
         Style::default().fg(Color::DarkGray)
     };
 
+    let count_str = if app.collections.is_empty() {
+        "0/0".to_string()
+    } else {
+        format!("{}/{}", app.selected_collection + 1, app.collections.len())
+    };
+    let title = format!(" Collections · {count_str} ");
+
     let collections_block = Block::default()
-        .title("Collections")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(border_style);
 
@@ -62,8 +69,17 @@ pub fn render_papers(app: &App, frame: &mut Frame, area: Rect) {
         Style::default().fg(Color::DarkGray)
     };
 
+    let breadcrumb = app.current_collection_breadcrumb();
+    let sort_badge = app.sort_field.badge(app.sort_direction);
+    let count_str = if app.papers.is_empty() {
+        "0/0".to_string()
+    } else {
+        format!("{}/{}", app.selected_paper + 1, app.papers.len())
+    };
+    let title = format!(" Papers · {breadcrumb} · {sort_badge} · {count_str} ");
+
     let papers_block = Block::default()
-        .title("Papers")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(border_style);
 
@@ -132,8 +148,15 @@ pub fn render_details(app: &App, frame: &mut Frame, area: Rect) {
         Style::default().fg(Color::DarkGray)
     };
 
+    let count_str = if app.toc_preview.is_empty() {
+        "0/0".to_string()
+    } else {
+        format!("{}/{}", app.selected_toc + 1, app.toc_preview.len())
+    };
+    let title = format!(" Details / TOC · {count_str} ");
+
     let details_block = Block::default()
-        .title("Details / Metadata")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(border_style);
 

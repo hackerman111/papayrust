@@ -2,7 +2,7 @@ use std::io;
 use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use papyrus_core::Action;
+use papyrus_core::{Action, Motion};
 use ratatui::backend::Backend;
 use ratatui::Terminal;
 
@@ -204,17 +204,54 @@ pub fn map_key_event_for_app(key: KeyEvent, app: &App) -> Option<Action> {
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
                 KeyCode::Char('c') | KeyCode::Char('q') => return Some(Action::Quit),
+                KeyCode::Char('d') => return Some(Action::Motion(Motion::HalfPageDown)),
+                KeyCode::Char('u') => return Some(Action::Motion(Motion::HalfPageUp)),
                 _ => {}
             }
         }
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => return Some(Action::MoveUp),
             KeyCode::Down | KeyCode::Char('j') => return Some(Action::MoveDown),
+            KeyCode::Char('g') => {
+                if app.pending_chord == Some('g') {
+                    if let Some(count) = app.pending_count {
+                        return Some(Action::Motion(Motion::Absolute(count)));
+                    } else {
+                        return Some(Action::Motion(Motion::First));
+                    }
+                } else {
+                    return Some(Action::PendingChord('g'));
+                }
+            }
+            KeyCode::Char('G') => {
+                if let Some(count) = app.pending_count {
+                    return Some(Action::Motion(Motion::Absolute(count)));
+                } else {
+                    return Some(Action::Motion(Motion::Last));
+                }
+            }
+            KeyCode::Char('0') => {
+                if app.pending_count.is_some() {
+                    return Some(Action::CountDigit(0));
+                } else {
+                    return Some(Action::Motion(Motion::First));
+                }
+            }
+            KeyCode::Char(c @ '1'..='9') => {
+                let digit = c.to_digit(10).unwrap() as usize;
+                return Some(Action::CountDigit(digit));
+            }
             KeyCode::Enter => {
                 let page = app.current_toc().map(|t| t.page_number);
                 return page.map(Action::OpenAtPage);
             }
-            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('t') => {
+            KeyCode::Esc => {
+                if app.pending_count.is_some() || app.pending_chord.is_some() {
+                    return Some(Action::ResetNavigationState);
+                }
+                return Some(Action::CloseFullscreenToc);
+            }
+            KeyCode::Char('q') | KeyCode::Char('t') => {
                 return Some(Action::CloseFullscreenToc);
             }
             KeyCode::Char('?') => return Some(Action::HelpModalToggle),
@@ -288,18 +325,65 @@ pub fn map_key_event_for_app(key: KeyEvent, app: &App) -> Option<Action> {
         }
     }
 
-    if key.code == KeyCode::Esc && !app.search_query.is_empty() {
-        return Some(Action::SearchCancel);
+    if key.code == KeyCode::Esc {
+        if app.pending_count.is_some() || app.pending_chord.is_some() {
+            return Some(Action::ResetNavigationState);
+        }
+        if !app.search_query.is_empty() {
+            return Some(Action::SearchCancel);
+        }
+        if app.layout_mode == crate::app::LayoutMode::SinglePanel {
+            return Some(Action::ToggleLayoutMode);
+        }
+    }
+
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('c') | KeyCode::Char('q') => return Some(Action::Quit),
+            KeyCode::Char('w') => return Some(Action::ToggleLayoutMode),
+            KeyCode::Char('d') => return Some(Action::Motion(Motion::HalfPageDown)),
+            KeyCode::Char('u') => return Some(Action::Motion(Motion::HalfPageUp)),
+            _ => {}
+        }
+    }
+
+    if !key.modifiers.contains(KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('g') => {
+                if app.pending_chord == Some('g') {
+                    if let Some(count) = app.pending_count {
+                        return Some(Action::Motion(Motion::Absolute(count)));
+                    } else {
+                        return Some(Action::Motion(Motion::First));
+                    }
+                } else {
+                    return Some(Action::PendingChord('g'));
+                }
+            }
+            KeyCode::Char('G') => {
+                if let Some(count) = app.pending_count {
+                    return Some(Action::Motion(Motion::Absolute(count)));
+                } else {
+                    return Some(Action::Motion(Motion::Last));
+                }
+            }
+            KeyCode::Char('0') => {
+                if app.pending_count.is_some() {
+                    return Some(Action::CountDigit(0));
+                } else {
+                    return Some(Action::Motion(Motion::First));
+                }
+            }
+            KeyCode::Char(c @ '1'..='9') => {
+                let digit = c.to_digit(10).unwrap() as usize;
+                return Some(Action::CountDigit(digit));
+            }
+            _ => {}
+        }
     }
 
     if app.active_panel == ActivePanel::Details {
         let current_toc_id = app.current_toc().map(|t| t.id);
-        if key.modifiers.contains(KeyModifiers::CONTROL) {
-            match key.code {
-                KeyCode::Char('c') | KeyCode::Char('q') => return Some(Action::Quit),
-                _ => {}
-            }
-        }
         match key.code {
             KeyCode::Char('a') => return Some(Action::TocAddEntry { parent_id: None }),
             KeyCode::Char('A') => {
@@ -361,6 +445,9 @@ pub fn map_key_event_with_context(
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
             KeyCode::Char('c') | KeyCode::Char('q') => return Some(Action::Quit),
+            KeyCode::Char('w') => return Some(Action::ToggleLayoutMode),
+            KeyCode::Char('d') => return Some(Action::Motion(Motion::HalfPageDown)),
+            KeyCode::Char('u') => return Some(Action::Motion(Motion::HalfPageUp)),
             _ => {}
         }
     }
@@ -374,6 +461,9 @@ pub fn map_key_event_with_context(
             }
         }
         KeyCode::BackTab => Some(Action::PreviousPanel),
+        KeyCode::Char('h') => Some(Action::PanelLeft),
+        KeyCode::Char('l') => Some(Action::PanelRight),
+        KeyCode::Char('S') => Some(Action::CyclePaperSort),
         KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveUp),
         KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveDown),
         KeyCode::Char('q') => Some(Action::Quit),
@@ -405,7 +495,7 @@ pub fn map_key_event_with_context(
         KeyCode::Enter => match active_panel {
             ActivePanel::Papers => Some(Action::Open),
             ActivePanel::Details => selected_toc_page.map(Action::OpenAtPage),
-            ActivePanel::Collections => None,
+            ActivePanel::Collections => Some(Action::FocusPapers),
         },
         KeyCode::Char('A') => match active_panel {
             ActivePanel::Collections => Some(Action::CreateSubcollectionModalOpen),
@@ -423,6 +513,9 @@ pub fn map_key_event_with_context(
             ActivePanel::Papers => Some(Action::ImportMetadataModalOpen),
             _ => None,
         },
+        KeyCode::Char('0') => Some(Action::Motion(Motion::First)),
+        KeyCode::Char(c @ '1'..='9') => Some(Action::CountDigit(c.to_digit(10).unwrap() as usize)),
+        KeyCode::Char('G') => Some(Action::Motion(Motion::Last)),
         _ => None,
     }
 }

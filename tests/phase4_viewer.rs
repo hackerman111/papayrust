@@ -343,7 +343,7 @@ fn test_map_key_event_backward_compatibility() {
     assert_eq!(map_key_event(o_key), Some(Action::Open));
 
     let enter_col = map_key_event_with_context(enter, ActivePanel::Collections, None);
-    assert_eq!(enter_col, None);
+    assert_eq!(enter_col, Some(Action::FocusPapers));
 
     let enter_details_no_toc = map_key_event_with_context(enter, ActivePanel::Details, None);
     assert_eq!(enter_details_no_toc, None);

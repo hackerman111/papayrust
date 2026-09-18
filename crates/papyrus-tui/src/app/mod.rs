@@ -2,17 +2,29 @@ pub mod autocomplete;
 pub mod db_sync;
 pub mod dispatch;
 pub mod metadata;
+pub mod navigation;
 pub mod panel;
 pub mod search;
 pub mod selection;
+pub mod sorting;
 pub mod toc;
 
 #[cfg(test)]
 mod tests;
 
+pub use navigation::Motion;
 pub use panel::{ActivePanel, CollectionItem};
 pub use selection::{CollectionKey, SelectionState};
+pub use sorting::{PaperSortField, SortDirection};
 pub use toc::{TocEditState, TocImportSourceType, TocImportState};
+
+/// Layout mode for the main panel area.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LayoutMode {
+    #[default]
+    MultiPanel,
+    SinglePanel,
+}
 
 use rusqlite::Connection;
 use std::collections::HashMap;
@@ -109,6 +121,18 @@ pub struct App {
     pub create_collection_parent_id: Option<Uuid>,
     /// In-memory cache mapping paper id to list of tags.
     pub tags_by_paper: HashMap<Uuid, Vec<String>>,
+    /// Active layout mode: multi-panel (3 panels) or single-panel (focused panel fullscreen).
+    pub layout_mode: LayoutMode,
+    /// Active sort field for the papers list.
+    pub sort_field: PaperSortField,
+    /// Active sort direction for the papers list.
+    pub sort_direction: SortDirection,
+    /// Pending numeric count prefix for Vim motions (e.g. 5j, 12G).
+    pub pending_count: Option<usize>,
+    /// Pending character chord for multi-key sequences (e.g. 'g' in gg).
+    pub pending_chord: Option<char>,
+    /// Cached breadcrumbs for each collection key.
+    pub collection_breadcrumbs: HashMap<CollectionKey, String>,
     /// Command runner for launching external PDF viewers.
     pub(crate) runner: Arc<dyn CommandRunner>,
 
@@ -173,6 +197,12 @@ impl App {
             import_metadata_buffer: String::new(),
             create_collection_parent_id: None,
             tags_by_paper: HashMap::new(),
+            layout_mode: LayoutMode::default(),
+            sort_field: PaperSortField::default(),
+            sort_direction: SortDirection::default(),
+            pending_count: None,
+            pending_chord: None,
+            collection_breadcrumbs: HashMap::new(),
             runner: Arc::new(ProcessCommandRunner),
             search_index: None,
             db_conn: None,
@@ -229,12 +259,19 @@ impl App {
             import_metadata_buffer: String::new(),
             create_collection_parent_id: None,
             tags_by_paper: HashMap::new(),
+            layout_mode: LayoutMode::default(),
+            sort_field: PaperSortField::default(),
+            sort_direction: SortDirection::default(),
+            pending_count: None,
+            pending_chord: None,
+            collection_breadcrumbs: HashMap::new(),
             runner: Arc::new(ProcessCommandRunner),
             search_index: None,
             db_conn: None,
             papers_by_collection,
             tocs_by_paper,
         };
+        app.update_breadcrumbs();
         app.sync_current_selection();
         app
     }
@@ -244,6 +281,7 @@ impl App {
         let key = item.id;
         self.collections.push(item);
         self.papers_by_collection.insert(key, papers);
+        self.update_breadcrumbs();
         self.sync_current_selection();
     }
 
@@ -363,5 +401,56 @@ impl App {
     /// Returns a mutable reference to the SQLite database connection, if set.
     pub fn db_conn_mut(&mut self) -> Option<&mut Connection> {
         self.db_conn.as_mut()
+    }
+
+    /// Computes and caches breadcrumb paths for all collections in `self.collections`.
+    pub fn update_breadcrumbs(&mut self) {
+        self.collection_breadcrumbs.clear();
+        let id_map: HashMap<Uuid, (&str, Option<Uuid>)> = self
+            .collections
+            .iter()
+            .filter_map(|c| c.id.map(|id| (id, (c.name.as_str(), c.parent_id))))
+            .collect();
+
+        for col in &self.collections {
+            let breadcrumb = match &col.key {
+                CollectionKey::All => "All Papers".to_string(),
+                CollectionKey::RecentlyAdded => "Recently Added".to_string(),
+                CollectionKey::Unfiled => "Unfiled".to_string(),
+                CollectionKey::Untagged => "Untagged".to_string(),
+                CollectionKey::Real(id) => {
+                    let mut segments = Vec::new();
+                    let mut curr = Some(*id);
+                    let mut visited = std::collections::HashSet::new();
+
+                    while let Some(cid) = curr {
+                        if !visited.insert(cid) {
+                            break; // cycle protection
+                        }
+                        if let Some((name, parent)) = id_map.get(&cid) {
+                            segments.push(*name);
+                            curr = *parent;
+                        } else {
+                            break;
+                        }
+                    }
+                    segments.reverse();
+                    segments.join(" / ")
+                }
+            };
+            self.collection_breadcrumbs
+                .insert(col.key.clone(), breadcrumb);
+        }
+    }
+
+    /// Returns the cached breadcrumb for the currently selected collection.
+    pub fn current_collection_breadcrumb(&self) -> &str {
+        if let Some(col) = self.current_collection() {
+            if let Some(bc) = self.collection_breadcrumbs.get(&col.key) {
+                return bc.as_str();
+            }
+            return col.name.as_str();
+        }
+        "All Papers"
     }
 }

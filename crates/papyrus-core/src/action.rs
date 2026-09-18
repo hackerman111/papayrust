@@ -1,11 +1,31 @@
 use std::path::PathBuf;
 use uuid::Uuid;
 
+/// Navigation motion abstraction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Motion {
+    Relative(isize),
+    First,
+    Last,
+    Absolute(usize),
+    HalfPageDown,
+    HalfPageUp,
+}
+
 /// Actions supported by the Papyrus application and user interface.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     NextPanel,
     PreviousPanel,
+    PanelLeft,
+    PanelRight,
+    FocusPapers,
+    ToggleLayoutMode,
+    CyclePaperSort,
+    Motion(Motion),
+    CountDigit(usize),
+    PendingChord(char),
+    ResetNavigationState,
     MoveUp,
     MoveDown,
     Open,
@@ -196,5 +216,43 @@ mod tests {
             Action::TocImportModalBackspace,
             Action::TocImportModalBackspace
         );
+
+        // Phase B Navigation Actions
+        assert_eq!(Action::PanelLeft, Action::PanelLeft);
+        assert_ne!(Action::PanelLeft, Action::PanelRight);
+        assert_eq!(Action::PanelRight, Action::PanelRight);
+        assert_eq!(Action::FocusPapers, Action::FocusPapers);
+        assert_eq!(Action::ToggleLayoutMode, Action::ToggleLayoutMode);
+        assert_eq!(Action::CyclePaperSort, Action::CyclePaperSort);
+        assert_eq!(Action::ResetNavigationState, Action::ResetNavigationState);
+
+        assert_eq!(
+            Action::Motion(Motion::Relative(1)),
+            Action::Motion(Motion::Relative(1))
+        );
+        assert_ne!(
+            Action::Motion(Motion::Relative(1)),
+            Action::Motion(Motion::Relative(-1))
+        );
+        assert_eq!(Action::Motion(Motion::First), Action::Motion(Motion::First));
+        assert_eq!(Action::Motion(Motion::Last), Action::Motion(Motion::Last));
+        assert_eq!(
+            Action::Motion(Motion::Absolute(5)),
+            Action::Motion(Motion::Absolute(5))
+        );
+        assert_eq!(
+            Action::Motion(Motion::HalfPageDown),
+            Action::Motion(Motion::HalfPageDown)
+        );
+        assert_eq!(
+            Action::Motion(Motion::HalfPageUp),
+            Action::Motion(Motion::HalfPageUp)
+        );
+
+        assert_eq!(Action::CountDigit(5), Action::CountDigit(5));
+        assert_ne!(Action::CountDigit(5), Action::CountDigit(6));
+
+        assert_eq!(Action::PendingChord('g'), Action::PendingChord('g'));
+        assert_ne!(Action::PendingChord('g'), Action::PendingChord('z'));
     }
 }

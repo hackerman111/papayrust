@@ -8,90 +8,73 @@ use crate::app::{ActivePanel, App};
 impl App {
     /// Dispatches an action, updating application state accordingly.
     pub fn dispatch(&mut self, action: Action) {
+        match &action {
+            Action::CountDigit(_)
+            | Action::PendingChord(_)
+            | Action::Motion(_)
+            | Action::MoveUp
+            | Action::MoveDown
+            | Action::ResetNavigationState => {}
+            _ => {
+                self.pending_chord = None;
+                self.pending_count = None;
+            }
+        }
+
         match action {
             Action::NextPanel => {
+                self.record_position_for_current_collection();
+                self.record_position_for_current_paper();
                 self.active_panel = self.active_panel.next();
             }
             Action::PreviousPanel => {
+                self.record_position_for_current_collection();
+                self.record_position_for_current_paper();
                 self.active_panel = self.active_panel.previous();
             }
+            Action::PanelLeft => {
+                self.record_position_for_current_collection();
+                self.record_position_for_current_paper();
+                self.active_panel = self.active_panel.left();
+            }
+            Action::PanelRight => {
+                self.record_position_for_current_collection();
+                self.record_position_for_current_paper();
+                self.active_panel = self.active_panel.right();
+            }
+            Action::FocusPapers => {
+                self.record_position_for_current_collection();
+                self.record_position_for_current_paper();
+                self.active_panel = ActivePanel::Papers;
+            }
+            Action::ToggleLayoutMode => {
+                self.layout_mode = match self.layout_mode {
+                    crate::app::LayoutMode::MultiPanel => crate::app::LayoutMode::SinglePanel,
+                    crate::app::LayoutMode::SinglePanel => crate::app::LayoutMode::MultiPanel,
+                };
+                self.needs_clear = true;
+            }
+            Action::CyclePaperSort => {
+                self.cycle_paper_sort();
+            }
+            Action::Motion(motion) => {
+                self.apply_motion(motion);
+            }
+            Action::CountDigit(d) => {
+                self.handle_digit(d);
+            }
+            Action::PendingChord(c) => {
+                self.pending_chord = Some(c);
+            }
+            Action::ResetNavigationState => {
+                self.pending_count = None;
+                self.pending_chord = None;
+            }
             Action::MoveUp => {
-                if self.is_viewing_fullscreen_toc {
-                    if !self.toc_preview.is_empty() {
-                        self.selected_toc = self.selected_toc.saturating_sub(1);
-                        self.update_selection_from_indices();
-                    }
-                } else {
-                    match self.active_panel {
-                        ActivePanel::Collections => {
-                            if self.selected_collection > 0 {
-                                self.record_position_for_current_collection();
-                                self.selected_collection -= 1;
-                                self.selected_paper = 0;
-                                self.selected_toc = 0;
-                                self.sync_current_selection();
-                            }
-                        }
-                        ActivePanel::Papers => {
-                            if self.selected_paper > 0 {
-                                self.record_position_for_current_paper();
-                                self.selected_paper -= 1;
-                                self.selected_toc = 0;
-                                self.sync_paper_selection();
-                                self.update_selection_from_indices();
-                            }
-                        }
-                        ActivePanel::Details => {
-                            if !self.toc_preview.is_empty() {
-                                self.selected_toc = self.selected_toc.saturating_sub(1);
-                                self.update_selection_from_indices();
-                            }
-                        }
-                    }
-                }
+                self.apply_motion(papyrus_core::Motion::Relative(-1));
             }
             Action::MoveDown => {
-                if self.is_viewing_fullscreen_toc {
-                    if !self.toc_preview.is_empty()
-                        && self.selected_toc + 1 < self.toc_preview.len()
-                    {
-                        self.selected_toc += 1;
-                        self.update_selection_from_indices();
-                    }
-                } else {
-                    match self.active_panel {
-                        ActivePanel::Collections => {
-                            if !self.collections.is_empty()
-                                && self.selected_collection + 1 < self.collections.len()
-                            {
-                                self.record_position_for_current_collection();
-                                self.selected_collection += 1;
-                                self.selected_paper = 0;
-                                self.selected_toc = 0;
-                                self.sync_current_selection();
-                            }
-                        }
-                        ActivePanel::Papers => {
-                            if !self.papers.is_empty()
-                                && self.selected_paper + 1 < self.papers.len()
-                            {
-                                self.record_position_for_current_paper();
-                                self.selected_paper += 1;
-                                self.selected_toc = 0;
-                                self.sync_paper_selection();
-                                self.update_selection_from_indices();
-                            }
-                        }
-                        ActivePanel::Details => {
-                            if !self.toc_preview.is_empty()
-                                && self.selected_toc + 1 < self.toc_preview.len()
-                            {
-                                self.selected_toc += 1;
-                                self.update_selection_from_indices();
-                            }
-                        }
-                    }
-                }
+                self.apply_motion(papyrus_core::Motion::Relative(1));
             }
             Action::Open => {
                 let Some(paper) = self.current_paper() else {

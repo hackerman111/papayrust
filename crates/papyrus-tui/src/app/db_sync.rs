@@ -80,6 +80,7 @@ impl App {
             self.papers_by_collection = papers_by_collection;
             self.tocs_by_paper = tocs_by_paper;
             self.tags_by_paper = tags_by_paper;
+            self.update_breadcrumbs();
             self.restore_selection_by_uuid();
         }
         Ok(())
@@ -139,6 +140,7 @@ impl App {
         self.selected_collection = 0;
         self.selected_paper = 0;
         self.selected_toc = 0;
+        self.update_breadcrumbs();
         self.sync_current_selection();
 
         Ok(())
@@ -164,6 +166,12 @@ impl App {
                 .get(&key)
                 .cloned()
                 .unwrap_or_default();
+
+            crate::app::sorting::sort_papers(
+                &mut self.papers,
+                self.sort_field,
+                self.sort_direction,
+            );
 
             // Check position memory for the newly active collection
             let col_key = &self.collections[self.selected_collection].key;
