@@ -23,21 +23,33 @@ impl App {
 
         match action {
             Action::NextPanel => {
+                if self.visual_mode && self.active_panel == ActivePanel::Papers {
+                    self.exit_visual_mode();
+                }
                 self.record_position_for_current_collection();
                 self.record_position_for_current_paper();
                 self.active_panel = self.active_panel.next();
             }
             Action::PreviousPanel => {
+                if self.visual_mode && self.active_panel == ActivePanel::Papers {
+                    self.exit_visual_mode();
+                }
                 self.record_position_for_current_collection();
                 self.record_position_for_current_paper();
                 self.active_panel = self.active_panel.previous();
             }
             Action::PanelLeft => {
+                if self.visual_mode && self.active_panel == ActivePanel::Papers {
+                    self.exit_visual_mode();
+                }
                 self.record_position_for_current_collection();
                 self.record_position_for_current_paper();
                 self.active_panel = self.active_panel.left();
             }
             Action::PanelRight => {
+                if self.visual_mode && self.active_panel == ActivePanel::Papers {
+                    self.exit_visual_mode();
+                }
                 self.record_position_for_current_collection();
                 self.record_position_for_current_paper();
                 self.active_panel = self.active_panel.right();
@@ -442,6 +454,15 @@ impl App {
 
             Action::Quit => {
                 self.running = false;
+            }
+            Action::VisualModeToggle => {
+                self.toggle_visual_mode();
+            }
+            Action::VisualModeCancel => {
+                self.exit_visual_mode();
+            }
+            Action::VisualModeToggleItem => {
+                self.toggle_current_paper_selection();
             }
             _ => {}
         }

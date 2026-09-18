@@ -1705,3 +1705,210 @@ fn test_count_prefix_with_gg_chord() {
     assert_eq!(app.pending_chord, None);
     assert_eq!(app.pending_count, None);
 }
+
+#[test]
+fn test_visual_mode_toggle_and_range_expansion() {
+    let col = CollectionItem::new(None, "All Papers", 5);
+    let papers: Vec<Paper> = (0..5)
+        .map(|i| dummy_paper(&format!("Paper {i}"), "Author", 2020 + i))
+        .collect();
+    let mut map = HashMap::new();
+    map.insert(None, papers.clone());
+
+    let mut app = App::with_data(vec![col], map, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+    app.selected_paper = 1;
+
+    // Press 'V' to toggle visual mode
+    let key_v = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('V'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act_v = crate::event::map_key_event_for_app(key_v, &app);
+    assert_eq!(act_v, Some(Action::VisualModeToggle));
+    app.dispatch(act_v.unwrap());
+
+    assert!(app.visual_mode);
+    assert_eq!(app.visual_anchor, Some(1));
+    assert_eq!(app.visual_selected_uuids.len(), 1);
+    assert!(app.visual_selected_uuids.contains(&papers[1].id));
+    assert_eq!(app.visual_selected_papers(), vec![papers[1].id]);
+
+    // Move down 2 times using 'j'
+    let key_j = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('j'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    app.dispatch(crate::event::map_key_event_for_app(key_j, &app).unwrap());
+    assert_eq!(app.selected_paper, 2);
+    assert_eq!(app.visual_selected_uuids.len(), 2);
+
+    app.dispatch(crate::event::map_key_event_for_app(key_j, &app).unwrap());
+    assert_eq!(app.selected_paper, 3);
+    assert_eq!(app.visual_selected_uuids.len(), 3);
+    assert_eq!(
+        app.visual_selected_papers(),
+        vec![papers[1].id, papers[2].id, papers[3].id]
+    );
+
+    // Now move up above the anchor to paper 0
+    let key_k = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('k'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    app.dispatch(crate::event::map_key_event_for_app(key_k, &app).unwrap()); // to 2
+    app.dispatch(crate::event::map_key_event_for_app(key_k, &app).unwrap()); // to 1
+    app.dispatch(crate::event::map_key_event_for_app(key_k, &app).unwrap()); // to 0
+    assert_eq!(app.selected_paper, 0);
+    // Range 0..=1 should now be included
+    assert!(app.visual_selected_uuids.contains(&papers[0].id));
+    assert!(app.visual_selected_uuids.contains(&papers[1].id));
+    assert_eq!(
+        app.visual_selected_papers(),
+        vec![papers[0].id, papers[1].id, papers[2].id, papers[3].id]
+            .into_iter()
+            .filter(|id| app.visual_selected_uuids.contains(id))
+            .collect::<Vec<_>>()
+    );
+
+    // Toggle off by pressing 'V' again
+    let act_v2 = crate::event::map_key_event_for_app(key_v, &app);
+    assert_eq!(act_v2, Some(Action::VisualModeToggle));
+    app.dispatch(act_v2.unwrap());
+    assert!(!app.visual_mode);
+    assert_eq!(app.visual_anchor, None);
+    assert!(app.visual_selected_uuids.is_empty());
+}
+
+#[test]
+fn test_visual_mode_space_toggle() {
+    let col = CollectionItem::new(None, "All Papers", 4);
+    let papers: Vec<Paper> = (0..4)
+        .map(|i| dummy_paper(&format!("Paper {i}"), "Author", 2020 + i))
+        .collect();
+    let mut map = HashMap::new();
+    map.insert(None, papers.clone());
+
+    let mut app = App::with_data(vec![col], map, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+    app.selected_paper = 0;
+
+    app.enter_visual_mode();
+    assert!(app.visual_mode);
+
+    // Move to paper 1
+    app.apply_motion(Motion::Relative(1));
+    assert_eq!(app.selected_paper, 1);
+    assert_eq!(app.visual_selected_uuids.len(), 2);
+    assert!(app.visual_selected_uuids.contains(&papers[1].id));
+
+    // Press Space to toggle selection of paper 1
+    let key_space = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char(' '),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act_space = crate::event::map_key_event_for_app(key_space, &app);
+    assert_eq!(act_space, Some(Action::VisualModeToggleItem));
+    app.dispatch(act_space.unwrap());
+
+    // Paper 1 should now be deselected
+    assert!(!app.visual_selected_uuids.contains(&papers[1].id));
+    assert!(app.visual_selected_uuids.contains(&papers[0].id));
+    assert_eq!(app.visual_selected_papers(), vec![papers[0].id]);
+
+    // Press Space again to reselect paper 1
+    app.dispatch(Action::VisualModeToggleItem);
+    assert!(app.visual_selected_uuids.contains(&papers[1].id));
+    assert_eq!(
+        app.visual_selected_papers(),
+        vec![papers[0].id, papers[1].id]
+    );
+}
+
+#[test]
+fn test_visual_mode_esc_cancel() {
+    let col = CollectionItem::new(None, "All Papers", 3);
+    let papers: Vec<Paper> = (0..3)
+        .map(|i| dummy_paper(&format!("Paper {i}"), "Author", 2020 + i))
+        .collect();
+    let mut map = HashMap::new();
+    map.insert(None, papers.clone());
+
+    let mut app = App::with_data(vec![col], map, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+    app.selected_paper = 0;
+
+    app.enter_visual_mode();
+    app.apply_motion(Motion::Relative(1));
+    assert!(app.visual_mode);
+    assert_eq!(app.visual_selected_uuids.len(), 2);
+
+    // Press Esc to cancel visual mode
+    let key_esc = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Esc,
+        crossterm::event::KeyModifiers::NONE,
+    );
+    let act_esc = crate::event::map_key_event_for_app(key_esc, &app);
+    assert_eq!(act_esc, Some(Action::VisualModeCancel));
+    app.dispatch(act_esc.unwrap());
+
+    assert!(!app.visual_mode);
+    assert_eq!(app.visual_anchor, None);
+    assert!(app.visual_selected_uuids.is_empty());
+    // In normal mode, visual_selected_papers returns current paper
+    assert_eq!(app.visual_selected_papers(), vec![papers[1].id]);
+}
+
+#[test]
+fn test_visual_mode_panel_switch_clears() {
+    let col = CollectionItem::new(None, "All Papers", 3);
+    let papers: Vec<Paper> = (0..3)
+        .map(|i| dummy_paper(&format!("Paper {i}"), "Author", 2020 + i))
+        .collect();
+    let mut map = HashMap::new();
+    map.insert(None, papers.clone());
+
+    let mut app = App::with_data(vec![col], map, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+    app.selected_paper = 0;
+
+    app.enter_visual_mode();
+    assert!(app.visual_mode);
+    assert!(!app.visual_selected_uuids.is_empty());
+
+    // Switch panel left (to Collections)
+    app.dispatch(Action::PanelLeft);
+    assert_eq!(app.active_panel, ActivePanel::Collections);
+    assert!(!app.visual_mode);
+    assert_eq!(app.visual_anchor, None);
+    assert!(app.visual_selected_uuids.is_empty());
+
+    // Switch back to Papers and re-enter
+    app.dispatch(Action::PanelRight);
+    assert_eq!(app.active_panel, ActivePanel::Papers);
+    app.enter_visual_mode();
+    assert!(app.visual_mode);
+
+    // Switch panel right (to Details)
+    app.dispatch(Action::PanelRight);
+    assert_eq!(app.active_panel, ActivePanel::Details);
+    assert!(!app.visual_mode);
+    assert_eq!(app.visual_anchor, None);
+    assert!(app.visual_selected_uuids.is_empty());
+}
+
+#[test]
+fn test_visual_mode_enter_conditions_and_empty() {
+    let mut empty_app = App::new();
+    assert_eq!(empty_app.active_panel, ActivePanel::Collections);
+
+    // In Collections panel: enter_visual_mode should not activate
+    empty_app.enter_visual_mode();
+    assert!(!empty_app.visual_mode);
+
+    // Empty papers list in Papers panel: should not activate
+    empty_app.active_panel = ActivePanel::Papers;
+    empty_app.enter_visual_mode();
+    assert!(!empty_app.visual_mode);
+    assert!(empty_app.visual_selected_papers().is_empty());
+}

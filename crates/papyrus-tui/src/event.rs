@@ -325,6 +325,14 @@ pub fn map_key_event_for_app(key: KeyEvent, app: &App) -> Option<Action> {
         }
     }
 
+    if app.visual_mode && !key.modifiers.contains(KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char(' ') => return Some(Action::VisualModeToggleItem),
+            KeyCode::Esc => return Some(Action::VisualModeCancel),
+            _ => {}
+        }
+    }
+
     if key.code == KeyCode::Esc {
         if app.pending_count.is_some() || app.pending_chord.is_some() {
             return Some(Action::ResetNavigationState);
@@ -473,6 +481,10 @@ pub fn map_key_event_with_context(
         KeyCode::Char('?') => Some(Action::HelpModalToggle),
         KeyCode::Char('t') => match active_panel {
             ActivePanel::Papers | ActivePanel::Details => Some(Action::OpenFullscreenToc),
+            _ => None,
+        },
+        KeyCode::Char('V') => match active_panel {
+            ActivePanel::Papers => Some(Action::VisualModeToggle),
             _ => None,
         },
         KeyCode::Char('T') => match active_panel {

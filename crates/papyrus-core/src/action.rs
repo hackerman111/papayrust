@@ -115,6 +115,7 @@ pub enum Action {
     VisualModeToggle,
     VisualModeCancel,
     VisualModeSelectAll,
+    VisualModeToggleItem,
     PickerInput(char),
     PickerBackspace,
     PickerMoveUp,
@@ -281,6 +282,7 @@ mod tests {
         assert_eq!(Action::VisualModeToggle, Action::VisualModeToggle);
         assert_eq!(Action::VisualModeCancel, Action::VisualModeCancel);
         assert_eq!(Action::VisualModeSelectAll, Action::VisualModeSelectAll);
+        assert_eq!(Action::VisualModeToggleItem, Action::VisualModeToggleItem);
         assert_eq!(Action::PickerInput('a'), Action::PickerInput('a'));
         assert_ne!(Action::PickerInput('a'), Action::PickerInput('b'));
         assert_eq!(Action::PickerBackspace, Action::PickerBackspace);

@@ -46,6 +46,9 @@ impl App {
                         self.selected_toc = 0;
                         self.sync_paper_selection();
                         self.update_selection_from_indices();
+                        if self.visual_mode {
+                            self.update_visual_range();
+                        }
                     }
                 }
             }
