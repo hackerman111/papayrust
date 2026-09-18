@@ -71,4 +71,22 @@ mod tests {
         assert_eq!(state.paper_id, None);
         assert_eq!(state.toc_id, None);
     }
+
+    #[test]
+    fn test_collection_item_keys() {
+        use crate::app::CollectionItem;
+
+        let all_item = CollectionItem::new(None, "All Papers", 10);
+        assert_eq!(all_item.key, CollectionKey::All);
+        assert_eq!(all_item.id, None);
+
+        let uid = Uuid::new_v4();
+        let real_item = CollectionItem::new(Some(uid), "Real Col", 5);
+        assert_eq!(real_item.key, CollectionKey::Real(uid));
+        assert_eq!(real_item.id, Some(uid));
+
+        let unfiled_item = CollectionItem::from_key(CollectionKey::Unfiled, "Unfiled", 2);
+        assert_eq!(unfiled_item.key, CollectionKey::Unfiled);
+        assert_eq!(unfiled_item.id, None);
+    }
 }
