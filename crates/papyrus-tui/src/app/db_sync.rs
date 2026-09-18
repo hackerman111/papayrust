@@ -171,7 +171,8 @@ impl App {
                 if let Some(pos) = self.papers.iter().position(|p| p.id == remembered_pid) {
                     self.selected_paper = pos;
                 } else {
-                    self.selected_paper = self.selected_paper.min(self.papers.len().saturating_sub(1));
+                    self.selected_paper =
+                        self.selected_paper.min(self.papers.len().saturating_sub(1));
                 }
             } else {
                 self.selected_paper = self.selected_paper.min(self.papers.len().saturating_sub(1));
@@ -204,10 +205,14 @@ impl App {
                 if let Some(pos) = self.toc_preview.iter().position(|t| t.id == remembered_tid) {
                     self.selected_toc = pos;
                 } else {
-                    self.selected_toc = self.selected_toc.min(self.toc_preview.len().saturating_sub(1));
+                    self.selected_toc = self
+                        .selected_toc
+                        .min(self.toc_preview.len().saturating_sub(1));
                 }
             } else {
-                self.selected_toc = self.selected_toc.min(self.toc_preview.len().saturating_sub(1));
+                self.selected_toc = self
+                    .selected_toc
+                    .min(self.toc_preview.len().saturating_sub(1));
             }
         }
     }

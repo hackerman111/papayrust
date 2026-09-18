@@ -942,7 +942,8 @@ impl App {
             ActivePanel::Papers => {
                 if let Some(paper) = self.current_paper().cloned() {
                     let title = paper.title.as_deref().unwrap_or("paper").to_string();
-                    self.last_paper_by_collection.retain(|_, pid| *pid != paper.id);
+                    self.last_paper_by_collection
+                        .retain(|_, pid| *pid != paper.id);
                     self.last_toc_by_paper.remove(&paper.id);
                     if let Some(ref conn) = self.db_conn {
                         match papyrus_core::db::PaperRepo::delete(conn, paper.id) {

@@ -62,7 +62,9 @@ impl App {
             return;
         }
 
-        let col_idx = self.selected_collection.min(self.collections.len().saturating_sub(1));
+        let col_idx = self
+            .selected_collection
+            .min(self.collections.len().saturating_sub(1));
         self.selection.collection = self.collections[col_idx].key.clone();
 
         if self.papers.is_empty() {
@@ -72,12 +74,15 @@ impl App {
             let paper_idx = self.selected_paper.min(self.papers.len().saturating_sub(1));
             let pid = self.papers[paper_idx].id;
             self.selection.paper_id = Some(pid);
-            self.last_paper_by_collection.insert(self.selection.collection.clone(), pid);
+            self.last_paper_by_collection
+                .insert(self.selection.collection.clone(), pid);
 
             if self.toc_preview.is_empty() {
                 self.selection.toc_id = None;
             } else {
-                let toc_idx = self.selected_toc.min(self.toc_preview.len().saturating_sub(1));
+                let toc_idx = self
+                    .selected_toc
+                    .min(self.toc_preview.len().saturating_sub(1));
                 let tid = self.toc_preview[toc_idx].id;
                 self.selection.toc_id = Some(tid);
                 self.last_toc_by_paper.insert(pid, tid);
@@ -203,7 +208,11 @@ impl App {
                 });
 
                 if let Some(tid) = target_toc {
-                    self.selected_toc = self.toc_preview.iter().position(|t| t.id == tid).unwrap_or(0);
+                    self.selected_toc = self
+                        .toc_preview
+                        .iter()
+                        .position(|t| t.id == tid)
+                        .unwrap_or(0);
                     self.selection.toc_id = Some(tid);
                 } else {
                     self.selected_toc = self.selected_toc.min(self.toc_preview.len() - 1);
@@ -277,8 +286,8 @@ mod tests {
 
     #[test]
     fn test_selection_update_and_restore_reorder() {
-        use std::collections::HashMap;
         use crate::app::CollectionItem;
+        use std::collections::HashMap;
 
         let col_id = Uuid::new_v4();
         let p1 = dummy_paper("Paper 1");
@@ -300,7 +309,8 @@ mod tests {
         assert_eq!(app.selection.paper_id, Some(p2_id));
 
         // Now simulate reordering: [p2, p3, p1] in papers_by_collection
-        app.papers_by_collection.insert(Some(col_id), vec![p2, p3, p1]);
+        app.papers_by_collection
+            .insert(Some(col_id), vec![p2, p3, p1]);
 
         // Call restore_selection_by_uuid
         app.restore_selection_by_uuid();
