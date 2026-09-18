@@ -126,6 +126,8 @@ pub enum Action {
     PickerConfirm,
     PickerCancel,
     BatchDeleteConfirm,
+    RemoveFromCollection,
+    BatchRemoveFromCollection,
     Quit,
 }
 
@@ -294,5 +296,10 @@ mod tests {
         assert_eq!(Action::PickerConfirm, Action::PickerConfirm);
         assert_eq!(Action::PickerCancel, Action::PickerCancel);
         assert_eq!(Action::BatchDeleteConfirm, Action::BatchDeleteConfirm);
+        assert_eq!(Action::RemoveFromCollection, Action::RemoveFromCollection);
+        assert_eq!(
+            Action::BatchRemoveFromCollection,
+            Action::BatchRemoveFromCollection
+        );
     }
 }

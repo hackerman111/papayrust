@@ -354,7 +354,8 @@ pub fn map_key_event_for_app(key: KeyEvent, app: &App) -> Option<Action> {
         match key.code {
             KeyCode::Char(' ') => return Some(Action::VisualModeToggleItem),
             KeyCode::Esc => return Some(Action::VisualModeCancel),
-            KeyCode::Char('d') | KeyCode::Delete => return Some(Action::BatchDeleteConfirm),
+            KeyCode::Char('d') => return Some(Action::BatchRemoveFromCollection),
+            KeyCode::Char('D') | KeyCode::Delete => return Some(Action::BatchDeleteConfirm),
             _ => {}
         }
     }
@@ -525,6 +526,11 @@ pub fn map_key_event_with_context(
             _ => None,
         },
         KeyCode::Char('d') => match active_panel {
+            ActivePanel::Collections => Some(Action::DeleteConfirmOpen),
+            ActivePanel::Papers => Some(Action::RemoveFromCollection),
+            _ => None,
+        },
+        KeyCode::Char('D') => match active_panel {
             ActivePanel::Collections | ActivePanel::Papers => Some(Action::DeleteConfirmOpen),
             _ => None,
         },
@@ -1022,11 +1028,26 @@ mod tests {
             Some(Action::OpenFullscreenToc)
         );
 
-        // Visual mode batch delete with 'd' or Delete
+        // Normal mode: 'd' removes from collection, 'D' deletes permanently from DB
         app.active_panel = ActivePanel::Papers;
+        app.visual_mode = false;
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE), &app),
+            Some(Action::RemoveFromCollection)
+        );
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('D'), KeyModifiers::NONE), &app),
+            Some(Action::DeleteConfirmOpen)
+        );
+
+        // Visual mode: 'd' batch removes from collection, 'D' / Delete batch deletes permanently
         app.visual_mode = true;
         assert_eq!(
             map_key_event_for_app(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE), &app),
+            Some(Action::BatchRemoveFromCollection)
+        );
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('D'), KeyModifiers::NONE), &app),
             Some(Action::BatchDeleteConfirm)
         );
         assert_eq!(

@@ -1,4 +1,5 @@
 use super::*;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -2254,4 +2255,205 @@ fn test_render_visual_mode_and_generic_picker() {
     }
     assert!(rendered_picker.contains("Quick Open (Ctrl-p)"));
     assert!(rendered_picker.contains("Search Query"));
+}
+
+#[test]
+fn test_remove_paper_from_collection_preserves_db_record() {
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let col = papyrus_core::db::Collection {
+        id: Uuid::now_v7(),
+        name: "Machine Learning".to_string(),
+        parent_id: None,
+    };
+    papyrus_core::db::CollectionRepo::insert(&conn, &col).unwrap();
+
+    let p1 = dummy_paper("Attention Is All You Need", "Vaswani et al.", 2017);
+    let p2 = dummy_paper("BERT", "Devlin et al.", 2018);
+    papyrus_core::db::PaperRepo::insert(&conn, &p1).unwrap();
+    papyrus_core::db::PaperRepo::insert(&conn, &p2).unwrap();
+    papyrus_core::db::CollectionRepo::add_paper(&conn, p1.id, col.id).unwrap();
+    papyrus_core::db::CollectionRepo::add_paper(&conn, p2.id, col.id).unwrap();
+
+    let mut app = App::from_db_conn(conn).unwrap();
+    let ml_idx = app
+        .collections
+        .iter()
+        .position(|c| c.id == Some(col.id))
+        .unwrap();
+
+    // Select "Machine Learning" collection
+    app.selected_collection = ml_idx;
+    app.sync_current_selection();
+    assert_eq!(app.papers.len(), 2);
+
+    app.active_panel = ActivePanel::Papers;
+    let p1_pos = app.papers.iter().position(|p| p.id == p1.id).unwrap();
+    app.selected_paper = p1_pos;
+    app.update_selection_from_indices();
+
+    // Press 'd' -> Action::RemoveFromCollection
+    app.dispatch(Action::RemoveFromCollection);
+
+    // Collection should now only have 1 paper (p2)
+    assert_eq!(app.papers.len(), 1);
+    assert_eq!(app.papers[0].id, p2.id);
+
+    // BUT in the database, p1 is NOT deleted!
+    let db_conn = app.db_conn.as_ref().unwrap();
+    assert!(papyrus_core::db::PaperRepo::get_by_id(db_conn, p1.id)
+        .unwrap()
+        .is_some());
+    assert!(papyrus_core::db::PaperRepo::get_by_id(db_conn, p2.id)
+        .unwrap()
+        .is_some());
+
+    // In "All Papers", p1 is still present!
+    app.selected_collection = 0; // All Papers
+    app.sync_current_selection();
+    assert_eq!(app.papers.len(), 2);
+}
+
+#[test]
+fn test_remove_paper_from_all_papers_shows_hint() {
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let p1 = dummy_paper("Attention Is All You Need", "Vaswani et al.", 2017);
+    papyrus_core::db::PaperRepo::insert(&conn, &p1).unwrap();
+
+    let mut app = App::from_db_conn(conn).unwrap();
+    app.selected_collection = 0; // All Papers (id is None)
+    app.sync_current_selection();
+    app.active_panel = ActivePanel::Papers;
+    app.selected_paper = 0;
+
+    // Press 'd' -> Action::RemoveFromCollection in All Papers
+    app.dispatch(Action::RemoveFromCollection);
+
+    // Paper must NOT be removed or deleted
+    assert_eq!(app.papers.len(), 1);
+    let db_conn = app.db_conn.as_ref().unwrap();
+    assert!(papyrus_core::db::PaperRepo::get_by_id(db_conn, p1.id)
+        .unwrap()
+        .is_some());
+
+    // Status message tells user to use 'D' for database deletion
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Cannot remove from 'All Papers'; press 'D' to delete from database")
+    );
+}
+
+#[test]
+fn test_batch_remove_papers_from_collection() {
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let col = papyrus_core::db::Collection {
+        id: Uuid::now_v7(),
+        name: "Deep Learning".to_string(),
+        parent_id: None,
+    };
+    papyrus_core::db::CollectionRepo::insert(&conn, &col).unwrap();
+
+    let p1 = dummy_paper("Paper 1", "Author 1", 2021);
+    let p2 = dummy_paper("Paper 2", "Author 2", 2022);
+    let p3 = dummy_paper("Paper 3", "Author 3", 2023);
+    papyrus_core::db::PaperRepo::insert(&conn, &p1).unwrap();
+    papyrus_core::db::PaperRepo::insert(&conn, &p2).unwrap();
+    papyrus_core::db::PaperRepo::insert(&conn, &p3).unwrap();
+    papyrus_core::db::CollectionRepo::add_paper(&conn, p1.id, col.id).unwrap();
+    papyrus_core::db::CollectionRepo::add_paper(&conn, p2.id, col.id).unwrap();
+    papyrus_core::db::CollectionRepo::add_paper(&conn, p3.id, col.id).unwrap();
+
+    let mut app = App::from_db_conn(conn).unwrap();
+    let dl_idx = app
+        .collections
+        .iter()
+        .position(|c| c.id == Some(col.id))
+        .unwrap();
+
+    app.selected_collection = dl_idx;
+    app.sync_current_selection();
+    assert_eq!(app.papers.len(), 3);
+
+    app.active_panel = ActivePanel::Papers;
+    app.selected_paper = 0;
+
+    // Enter visual mode and select first two papers
+    app.enter_visual_mode();
+    app.apply_motion(Motion::Relative(1));
+    assert_eq!(app.visual_selected_papers().len(), 2);
+
+    // Press 'd' in visual mode -> Action::BatchRemoveFromCollection
+    app.dispatch(Action::BatchRemoveFromCollection);
+    assert!(!app.visual_mode);
+
+    // Active collection now has only 1 paper (the 3rd)
+    assert_eq!(app.papers.len(), 1);
+    assert_eq!(app.papers[0].id, p3.id);
+
+    // In database, all 3 papers still exist
+    let db_conn = app.db_conn.as_ref().unwrap();
+    assert!(papyrus_core::db::PaperRepo::get_by_id(db_conn, p1.id)
+        .unwrap()
+        .is_some());
+    assert!(papyrus_core::db::PaperRepo::get_by_id(db_conn, p2.id)
+        .unwrap()
+        .is_some());
+    assert!(papyrus_core::db::PaperRepo::get_by_id(db_conn, p3.id)
+        .unwrap()
+        .is_some());
+
+    // In All Papers, all 3 papers are present
+    app.selected_collection = 0;
+    app.sync_current_selection();
+    assert_eq!(app.papers.len(), 3);
+}
+
+#[test]
+fn test_permanent_delete_paper_with_capital_d() {
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let col = papyrus_core::db::Collection {
+        id: Uuid::now_v7(),
+        name: "Test Col".to_string(),
+        parent_id: None,
+    };
+    papyrus_core::db::CollectionRepo::insert(&conn, &col).unwrap();
+
+    let p1 = dummy_paper("Paper To Erase", "Author", 2020);
+    papyrus_core::db::PaperRepo::insert(&conn, &p1).unwrap();
+    papyrus_core::db::CollectionRepo::add_paper(&conn, p1.id, col.id).unwrap();
+
+    let mut app = App::from_db_conn(conn).unwrap();
+    let col_idx = app
+        .collections
+        .iter()
+        .position(|c| c.id == Some(col.id))
+        .unwrap();
+
+    app.selected_collection = col_idx;
+    app.sync_current_selection();
+    app.active_panel = ActivePanel::Papers;
+    app.selected_paper = 0;
+
+    // Key 'D' is mapped to Action::DeleteConfirmOpen
+    let key_event = KeyEvent::new(KeyCode::Char('D'), KeyModifiers::NONE);
+    let action = crate::event::map_key_event_for_app(key_event, &app);
+    assert_eq!(action, Some(Action::DeleteConfirmOpen));
+
+    app.dispatch(Action::DeleteConfirmOpen);
+    assert!(app.is_confirming_delete);
+
+    // Confirm deletion
+    app.dispatch(Action::DeleteConfirmExecute);
+    assert!(!app.is_confirming_delete);
+
+    // Paper is deleted from collection AND permanently deleted from DB
+    assert_eq!(app.papers.len(), 0);
+    let db_conn = app.db_conn.as_ref().unwrap();
+    assert!(papyrus_core::db::PaperRepo::get_by_id(db_conn, p1.id)
+        .unwrap()
+        .is_none());
+
+    // In All Papers, paper is also gone
+    app.selected_collection = 0;
+    app.sync_current_selection();
+    assert_eq!(app.papers.len(), 0);
 }

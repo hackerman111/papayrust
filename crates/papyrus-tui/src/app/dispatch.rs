@@ -440,6 +440,12 @@ impl App {
             Action::DeleteConfirmExecute => {
                 self.execute_delete();
             }
+            Action::RemoveFromCollection => {
+                self.remove_current_paper_from_collection();
+            }
+            Action::BatchRemoveFromCollection => {
+                self.batch_remove_papers_from_collection();
+            }
 
             // Search cycling
             Action::SearchCycleCollection => {
@@ -1055,6 +1061,88 @@ impl App {
         self.is_confirming_delete = false;
         self.delete_target_description.clear();
         self.needs_clear = true;
+    }
+
+    /// Removes the currently selected paper from the active real collection.
+    fn remove_current_paper_from_collection(&mut self) {
+        let Some(col) = self.current_collection() else {
+            self.set_status("No collection selected");
+            return;
+        };
+        let Some(col_id) = col.id else {
+            self.set_status("Cannot remove from 'All Papers'; press 'D' to delete from database");
+            return;
+        };
+        let col_name = col.name.clone();
+
+        let Some(paper) = self.current_paper().cloned() else {
+            self.set_status("No paper selected");
+            return;
+        };
+
+        if let Some(ref mut conn) = self.db_conn {
+            match papyrus_core::db::CollectionRepo::remove_paper(conn, paper.id, col_id) {
+                Ok(_) => {
+                    let _ = self.reload_from_db();
+                    let title = paper.title.as_deref().unwrap_or(&paper.file_path);
+                    self.set_status(format!("Removed '{title}' from collection '{col_name}'"));
+                }
+                Err(err) => {
+                    self.set_status(format!("Failed to remove paper from collection: {err}"));
+                }
+            }
+        } else {
+            // In-memory fallback
+            if let Some(papers) = self.papers_by_collection.get_mut(&Some(col_id)) {
+                papers.retain(|p| p.id != paper.id);
+            }
+            self.sync_current_selection();
+            self.set_status(format!("Removed paper from collection '{col_name}'"));
+        }
+    }
+
+    /// Batch removes all visual selected papers from the active real collection.
+    fn batch_remove_papers_from_collection(&mut self) {
+        let Some(col) = self.current_collection() else {
+            self.set_status("No collection selected");
+            return;
+        };
+        let Some(col_id) = col.id else {
+            self.set_status("Cannot remove from 'All Papers'; press 'D' to delete from database");
+            return;
+        };
+        let col_name = col.name.clone();
+
+        let target_papers = self.visual_selected_papers();
+        if target_papers.is_empty() {
+            self.set_status("No papers selected");
+            return;
+        }
+
+        let count = target_papers.len();
+        if let Some(ref mut conn) = self.db_conn {
+            match crate::app::batch_set_collections(conn, &target_papers, &[], &[col_id]) {
+                Ok(_) => {
+                    let _ = self.reload_from_db();
+                    self.exit_visual_mode();
+                    self.set_status(format!(
+                        "Removed {count} papers from collection '{col_name}'"
+                    ));
+                }
+                Err(err) => {
+                    self.set_status(format!("Failed to remove papers from collection: {err}"));
+                }
+            }
+        } else {
+            if let Some(papers) = self.papers_by_collection.get_mut(&Some(col_id)) {
+                papers.retain(|p| !target_papers.contains(&p.id));
+            }
+            self.sync_current_selection();
+            self.exit_visual_mode();
+            self.set_status(format!(
+                "Removed {count} papers from collection '{col_name}'"
+            ));
+        }
     }
 }
 

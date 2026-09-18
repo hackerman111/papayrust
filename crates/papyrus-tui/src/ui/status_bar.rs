@@ -27,7 +27,7 @@ pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
         }
     } else if app.visual_mode {
         format!(
-            "-- VISUAL ({} selected) -- | c: Collections | t: Tags | d: Delete | Space: Toggle | Esc: Cancel",
+            "-- VISUAL ({} selected) -- | c: Col | t: Tags | d: Rem Col | D: Del DB | Space: Toggle | Esc: Cancel",
             app.visual_selected_uuids.len()
         )
     } else if app.is_showing_help {
@@ -63,7 +63,7 @@ pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
                     .to_string()
             }
             ActivePanel::Papers => {
-                "[Papers] h/l: Focus | j/k: Nav | Enter: Open | Ctrl-p: QuickOpen | c: Col | t: Tags | V: Visual | S: Sort | Tab | ?: Help | q: Quit"
+                "[Papers] h/l: Focus | j/k: Nav | Enter: Open | Ctrl-p: QuickOpen | c: Col | t: Tags | d: Rem | D: Del DB | V: Visual | S: Sort | Tab | ?: Help | q: Quit"
                     .to_string()
             }
             ActivePanel::Details => {

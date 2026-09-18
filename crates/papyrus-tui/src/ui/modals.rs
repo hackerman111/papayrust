@@ -717,7 +717,7 @@ pub fn render_help_modal(_app: &App, frame: &mut Frame) {
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw("j/k move | Enter/o open | S sort | c collections | t tags | V visual | d delete"),
+            Span::raw("j/k move | Enter/o open | S sort | c col | t tags | d rem col | D del DB | V visual"),
         ]),
         Line::from(vec![
             Span::raw("              "),
@@ -730,7 +730,7 @@ pub fn render_help_modal(_app: &App, frame: &mut Frame) {
                     .fg(Color::Magenta)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw("Ctrl-p Quick Open | c Collection picker | t Tag picker | V Visual mode"),
+            Span::raw("Ctrl-p Quick Open | c Collection picker | t Tag picker | V Visual (d rem / D del)"),
         ]),
         Line::from(vec![
             Span::styled(
