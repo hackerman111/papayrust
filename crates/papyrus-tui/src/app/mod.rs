@@ -4,12 +4,14 @@ pub mod dispatch;
 pub mod metadata;
 pub mod panel;
 pub mod search;
+pub mod selection;
 pub mod toc;
 
 #[cfg(test)]
 mod tests;
 
 pub use panel::{ActivePanel, CollectionItem};
+pub use selection::{CollectionKey, SelectionState};
 pub use toc::{TocEditState, TocImportSourceType, TocImportState};
 
 use rusqlite::Connection;
