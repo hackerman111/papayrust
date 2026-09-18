@@ -19,27 +19,30 @@ impl App {
                 if self.is_viewing_fullscreen_toc {
                     if !self.toc_preview.is_empty() {
                         self.selected_toc = self.selected_toc.saturating_sub(1);
+                        self.update_selection_from_indices();
                     }
                 } else {
                     match self.active_panel {
                         ActivePanel::Collections => {
                             if self.selected_collection > 0 {
+                                self.record_position_for_current_collection();
                                 self.selected_collection -= 1;
-                                self.selected_paper = 0;
-                                self.selected_toc = 0;
                                 self.sync_current_selection();
                             }
                         }
                         ActivePanel::Papers => {
                             if self.selected_paper > 0 {
+                                self.record_position_for_current_paper();
                                 self.selected_paper -= 1;
                                 self.selected_toc = 0;
                                 self.sync_paper_selection();
+                                self.update_selection_from_indices();
                             }
                         }
                         ActivePanel::Details => {
                             if !self.toc_preview.is_empty() {
                                 self.selected_toc = self.selected_toc.saturating_sub(1);
+                                self.update_selection_from_indices();
                             }
                         }
                     }
@@ -51,6 +54,7 @@ impl App {
                         && self.selected_toc + 1 < self.toc_preview.len()
                     {
                         self.selected_toc += 1;
+                        self.update_selection_from_indices();
                     }
                 } else {
                     match self.active_panel {
@@ -58,9 +62,8 @@ impl App {
                             if !self.collections.is_empty()
                                 && self.selected_collection + 1 < self.collections.len()
                             {
+                                self.record_position_for_current_collection();
                                 self.selected_collection += 1;
-                                self.selected_paper = 0;
-                                self.selected_toc = 0;
                                 self.sync_current_selection();
                             }
                         }
@@ -68,9 +71,11 @@ impl App {
                             if !self.papers.is_empty()
                                 && self.selected_paper + 1 < self.papers.len()
                             {
+                                self.record_position_for_current_paper();
                                 self.selected_paper += 1;
                                 self.selected_toc = 0;
                                 self.sync_paper_selection();
+                                self.update_selection_from_indices();
                             }
                         }
                         ActivePanel::Details => {
@@ -78,6 +83,7 @@ impl App {
                                 && self.selected_toc + 1 < self.toc_preview.len()
                             {
                                 self.selected_toc += 1;
+                                self.update_selection_from_indices();
                             }
                         }
                     }
@@ -906,6 +912,8 @@ impl App {
                         .map(|c| c.name.clone())
                         .unwrap_or_default();
 
+                    self.last_paper_by_collection
+                        .remove(&crate::app::CollectionKey::Real(col_id));
                     if let Some(ref conn) = self.db_conn {
                         match papyrus_core::db::CollectionRepo::delete(conn, col_id) {
                             Ok(_) => {
@@ -930,6 +938,8 @@ impl App {
             ActivePanel::Papers => {
                 if let Some(paper) = self.current_paper().cloned() {
                     let title = paper.title.as_deref().unwrap_or("paper").to_string();
+                    self.last_paper_by_collection.retain(|_, pid| *pid != paper.id);
+                    self.last_toc_by_paper.remove(&paper.id);
                     if let Some(ref conn) = self.db_conn {
                         match papyrus_core::db::PaperRepo::delete(conn, paper.id) {
                             Ok(_) => {
