@@ -886,3 +886,69 @@ fn test_path_autocomplete_in_modals() {
         format!("{}/unique_meta.json", dir.path().display())
     );
 }
+
+#[test]
+fn test_db_reload_preserves_selection_by_uuid() {
+    use papyrus_core::db::{Collection, CollectionRepo, PaperRepo};
+
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let col_a = Collection {
+        id: Uuid::now_v7(),
+        name: "Col A".to_string(),
+        parent_id: None,
+    };
+    let col_b = Collection {
+        id: Uuid::now_v7(),
+        name: "Col B".to_string(),
+        parent_id: None,
+    };
+    CollectionRepo::insert(&conn, &col_a).unwrap();
+    CollectionRepo::insert(&conn, &col_b).unwrap();
+
+    let p1 = dummy_paper("Paper B1", "Author 1", 2021);
+    let p2 = dummy_paper("Paper B2", "Author 2", 2022);
+    PaperRepo::insert(&conn, &p1).unwrap();
+    PaperRepo::insert(&conn, &p2).unwrap();
+
+    CollectionRepo::add_paper(&conn, p1.id, col_b.id).unwrap();
+    CollectionRepo::add_paper(&conn, p2.id, col_b.id).unwrap();
+
+    let mut app = App::from_db_conn(conn).unwrap();
+    // collections: [All Papers, Col A, Col B]
+    let col_b_idx = app
+        .collections
+        .iter()
+        .position(|c| c.id == Some(col_b.id))
+        .unwrap();
+    assert_eq!(col_b_idx, 2);
+
+    app.selected_collection = col_b_idx;
+    app.sync_current_selection();
+
+    // In Col B, select p2 (index 1)
+    app.selected_paper = 1;
+    app.update_selection_from_indices();
+    assert_eq!(app.selection.paper_id, Some(p2.id));
+
+    // Now insert a new collection in the DB that shifts alphabetical ordering: "Col 0"
+    if let Some(ref conn) = app.db_conn {
+        let col_0 = Collection {
+            id: Uuid::now_v7(),
+            name: "Col 0".to_string(),
+            parent_id: None,
+        };
+        CollectionRepo::insert(conn, &col_0).unwrap();
+    }
+
+    // Reload from DB
+    app.reload_from_db().unwrap();
+
+    // Col B should have shifted to index 3: [All Papers, Col 0, Col A, Col B]
+    assert_eq!(app.collections[app.selected_collection].id, Some(col_b.id));
+    assert_eq!(app.selected_collection, 3);
+    assert_eq!(app.selection.collection, CollectionKey::Real(col_b.id));
+
+    // Paper B2 should still be selected by UUID
+    assert_eq!(app.selection.paper_id, Some(p2.id));
+    assert_eq!(app.papers[app.selected_paper].id, p2.id);
+}

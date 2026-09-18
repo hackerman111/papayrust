@@ -40,7 +40,6 @@ impl App {
 
     /// Reloads papers and collections from the internal SQLite connection, preserving current collection.
     pub fn reload_from_db(&mut self) -> Result<(), RepoError> {
-        let prev_collection_idx = self.selected_collection;
         if let Some(ref conn) = self.db_conn {
             let all_papers = PaperRepo::list(conn)?;
             let db_collections = CollectionRepo::list(conn)?;
@@ -81,9 +80,7 @@ impl App {
             self.papers_by_collection = papers_by_collection;
             self.tocs_by_paper = tocs_by_paper;
             self.tags_by_paper = tags_by_paper;
-            self.selected_collection =
-                prev_collection_idx.min(self.collections.len().saturating_sub(1));
-            self.sync_current_selection();
+            self.restore_selection_by_uuid();
         }
         Ok(())
     }
@@ -152,6 +149,7 @@ impl App {
         if self.collections.is_empty() {
             self.selected_collection = 0;
             self.papers.clear();
+            self.selected_paper = 0;
         } else {
             if self.selected_collection >= self.collections.len() {
                 self.selected_collection = self.collections.len() - 1;
@@ -166,9 +164,22 @@ impl App {
                 .get(&key)
                 .cloned()
                 .unwrap_or_default();
+
+            // Check position memory for the newly active collection
+            let col_key = &self.collections[self.selected_collection].key;
+            if let Some(&remembered_pid) = self.last_paper_by_collection.get(col_key) {
+                if let Some(pos) = self.papers.iter().position(|p| p.id == remembered_pid) {
+                    self.selected_paper = pos;
+                } else if self.selected_paper >= self.papers.len() {
+                    self.selected_paper = self.papers.len().saturating_sub(1);
+                }
+            } else if self.selected_paper >= self.papers.len() {
+                self.selected_paper = self.papers.len().saturating_sub(1);
+            }
         }
         self.selected_toc = 0;
         self.sync_paper_selection();
+        self.update_selection_from_indices();
     }
 
     /// Synchronizes the details and TOC preview for the currently selected paper.
@@ -187,10 +198,16 @@ impl App {
                 .get(&paper_id)
                 .cloned()
                 .unwrap_or_default();
-            if self.toc_preview.is_empty() {
-                self.selected_toc = 0;
+
+            // Check position memory for the newly active paper
+            if let Some(&remembered_tid) = self.last_toc_by_paper.get(&paper_id) {
+                if let Some(pos) = self.toc_preview.iter().position(|t| t.id == remembered_tid) {
+                    self.selected_toc = pos;
+                } else if self.selected_toc >= self.toc_preview.len() {
+                    self.selected_toc = self.toc_preview.len().saturating_sub(1);
+                }
             } else if self.selected_toc >= self.toc_preview.len() {
-                self.selected_toc = self.toc_preview.len() - 1;
+                self.selected_toc = self.toc_preview.len().saturating_sub(1);
             }
         }
     }
