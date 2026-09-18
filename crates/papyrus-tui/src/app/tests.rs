@@ -2457,3 +2457,78 @@ fn test_permanent_delete_paper_with_capital_d() {
     app.sync_current_selection();
     assert_eq!(app.papers.len(), 0);
 }
+
+#[test]
+fn test_centered_scroll_rendering_papers_table() {
+    let col = CollectionItem::new(None, "All Papers", 30);
+    let mut papers = Vec::new();
+    for i in 0..30 {
+        papers.push(dummy_paper(
+            &format!("Paper Number {:02}", i),
+            "Author",
+            2020 + (i as i64 % 5),
+        ));
+    }
+    let mut map = HashMap::new();
+    map.insert(None, papers);
+
+    let mut app = App::with_data(vec![col], map, HashMap::new());
+    app.active_panel = ActivePanel::Papers;
+    // Select paper 15 (middle of list)
+    app.selected_paper = 15;
+    app.update_selection_from_indices();
+
+    let backend = ratatui::backend::TestBackend::new(120, 20);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|f| crate::ui::render(&app, f)).unwrap();
+
+    let buffer = terminal.backend().buffer();
+    let mut rendered = String::new();
+    for y in 0..buffer.area.height {
+        for x in 0..buffer.area.width {
+            rendered.push_str(buffer[(x, y)].symbol());
+        }
+        rendered.push('\n');
+    }
+
+    // Paper 15 should be visible with active cursor prefix "> "
+    assert!(rendered.contains("> Paper Number 15"));
+    // Paper 0 should NOT be visible because table scrolled down to center item 15!
+    assert!(!rendered.contains("Paper Number 00"));
+}
+
+#[test]
+fn test_centered_scroll_rendering_generic_picker() {
+    let mut items = Vec::new();
+    for i in 0..30 {
+        items.push(crate::app::PickerItem {
+            id: Uuid::now_v7(),
+            title: format!("Picker Item {:02}", i),
+            subtitle: None,
+            category: Some("Test".to_string()),
+        });
+    }
+    let mut picker = crate::app::GenericPicker::new("Search Items", items, false);
+    picker.selected = 15;
+
+    let app = App::new();
+    let backend = ratatui::backend::TestBackend::new(120, 20);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| crate::ui::modals::render_generic_picker(&app, f, &picker))
+        .unwrap();
+
+    let buffer = terminal.backend().buffer();
+    let mut rendered = String::new();
+    for y in 0..buffer.area.height {
+        for x in 0..buffer.area.width {
+            rendered.push_str(buffer[(x, y)].symbol());
+        }
+        rendered.push('\n');
+    }
+
+    // Picker item 15 should be visible with active cursor prefix "> "
+    assert!(rendered.contains("> Picker Item 15"));
+    // Top items should NOT be visible because picker is centered on 15
+    assert!(!rendered.contains("Picker Item 00"));
+}

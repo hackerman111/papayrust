@@ -687,7 +687,7 @@ pub fn render_help_modal(_app: &App, frame: &mut Frame) {
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw("Tab/Shift+Tab / h/l panel | Ctrl-w toggle layout | / search | ? help | q quit"),
+            Span::raw("Tab/Shift+Tab / h/l panel | W/z / Ctrl-w zoom | / search | ? help | q/ZZ/ZQ quit"),
         ]),
         Line::from(vec![
             Span::styled(
@@ -696,7 +696,7 @@ pub fn render_help_modal(_app: &App, frame: &mut Frame) {
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw("j/k move | gg/G first/last | Ctrl-d/u half page | [count] prefix (e.g. 5j, 12G)"),
+            Span::raw("j/k move | gg/G first/last | }/{ (J/K) / Ctrl-d/u half page | [count] prefix"),
         ]),
         Line::from(""),
         Line::from(vec![
@@ -730,7 +730,7 @@ pub fn render_help_modal(_app: &App, frame: &mut Frame) {
                     .fg(Color::Magenta)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw("Ctrl-p Quick Open | c Collection picker | t Tag picker | V Visual (d rem / D del)"),
+            Span::raw("p / Ctrl-p Quick Open | c Collection picker | t Tag picker | V Visual (d rem / D del)"),
         ]),
         Line::from(vec![
             Span::styled(
@@ -1066,11 +1066,8 @@ pub fn render_generic_picker(_app: &App, frame: &mut Frame, picker: &GenericPick
     let visible_height = chunks[1].height as usize;
     let total_visible = picker.visible_indices.len();
     if visible_height > 0 && total_visible > 0 {
-        let start_idx = if picker.selected >= visible_height {
-            picker.selected - visible_height + 1
-        } else {
-            0
-        };
+        let start_idx =
+            super::centered_scroll_offset(picker.selected, total_visible, visible_height);
         let end_idx = (start_idx + visible_height).min(total_visible);
 
         let mut lines = Vec::new();

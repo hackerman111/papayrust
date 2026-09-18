@@ -19,11 +19,14 @@ pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
     } else if let Some(ref picker) = app.active_picker {
         if picker.multi_select {
             format!(
-                "[{}] Space: Toggle | j/k: Move | Enter: Confirm | Esc: Cancel",
+                "[{}] Space: Toggle | j/k/}}/{{: Move | Enter: Confirm | Esc: Cancel",
                 picker.title
             )
         } else {
-            format!("[{}] j/k: Move | Enter: Select | Esc: Cancel", picker.title)
+            format!(
+                "[{}] j/k/}}/{{: Move | Enter: Select | Esc: Cancel",
+                picker.title
+            )
         }
     } else if app.visual_mode {
         format!(
@@ -41,7 +44,7 @@ pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
     } else if app.is_adding_paper {
         "Add Paper | Enter: Import | Tab: Autocomplete | Esc: Cancel".to_string()
     } else if app.is_viewing_fullscreen_toc {
-        "Fullscreen TOC | j/k: Scroll | Enter: Jump to page | Esc/q/t: Exit TOC | ?: Help"
+        "Fullscreen TOC | j/k/}/{: Scroll | Enter: Jump to page | Esc/q/t: Exit TOC | ?: Help"
             .to_string()
     } else if app.is_confirming_delete {
         "Confirm Delete | Enter: Delete permanently | Esc / q: Cancel".to_string()
@@ -63,7 +66,7 @@ pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
                     .to_string()
             }
             ActivePanel::Papers => {
-                "[Papers] h/l: Focus | j/k: Nav | Enter: Open | Ctrl-p: QuickOpen | c: Col | t: Tags | d: Rem | D: Del DB | V: Visual | S: Sort | Tab | ?: Help | q: Quit"
+                "[Papers] h/l: Focus | j/k: Nav | Enter: Open | p: Quick | c: Col | t: Tags | d: Rem | D: Del DB | V: Visual | S: Sort | Tab | ?: Help | q: Quit"
                     .to_string()
             }
             ActivePanel::Details => {

@@ -29,31 +29,42 @@ pub fn render_collections(app: &App, frame: &mut Frame, area: Rect) {
         .borders(Borders::ALL)
         .border_style(border_style);
 
-    let collection_items: Vec<ListItem> = app
-        .collections
-        .iter()
-        .enumerate()
-        .map(|(idx, col)| {
-            let is_selected = idx == app.selected_collection;
-            let prefix = if is_selected { "> " } else { "  " };
-            let tree_indent = if col.depth > 0 {
-                format!("{}└─ ", "  ".repeat(col.depth - 1))
-            } else {
-                String::new()
-            };
-            let content = format!("{prefix}{tree_indent}{} ({})", col.name, col.paper_count);
+    let inner_area = collections_block.inner(area);
+    let visible_height = inner_area.height as usize;
+    let total_items = app.collections.len();
+    let start_idx =
+        super::centered_scroll_offset(app.selected_collection, total_items, visible_height);
+    let end_idx = (start_idx + visible_height).min(total_items);
 
-            let mut style = Style::default();
-            if is_selected {
-                if app.active_panel == ActivePanel::Collections {
-                    style = style.fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let collection_items: Vec<ListItem> = if total_items == 0 {
+        Vec::new()
+    } else {
+        app.collections[start_idx..end_idx]
+            .iter()
+            .enumerate()
+            .map(|(offset_idx, col)| {
+                let actual_idx = start_idx + offset_idx;
+                let is_selected = actual_idx == app.selected_collection;
+                let prefix = if is_selected { "> " } else { "  " };
+                let tree_indent = if col.depth > 0 {
+                    format!("{}└─ ", "  ".repeat(col.depth - 1))
                 } else {
-                    style = style.fg(Color::White).add_modifier(Modifier::UNDERLINED);
+                    String::new()
+                };
+                let content = format!("{prefix}{tree_indent}{} ({})", col.name, col.paper_count);
+
+                let mut style = Style::default();
+                if is_selected {
+                    if app.active_panel == ActivePanel::Collections {
+                        style = style.fg(Color::Yellow).add_modifier(Modifier::BOLD);
+                    } else {
+                        style = style.fg(Color::White).add_modifier(Modifier::UNDERLINED);
+                    }
                 }
-            }
-            ListItem::new(content).style(style)
-        })
-        .collect();
+                ListItem::new(content).style(style)
+            })
+            .collect()
+    };
 
     let collections_list = List::new(collection_items).block(collections_block);
     frame.render_widget(collections_list, area);
@@ -91,63 +102,73 @@ pub fn render_papers(app: &App, frame: &mut Frame, area: Rect) {
         )
         .bottom_margin(1);
 
-    let rows: Vec<Row> = app
-        .papers
-        .iter()
-        .enumerate()
-        .map(|(idx, paper)| {
-            let is_selected = idx == app.selected_paper;
-            let is_visual_selected =
-                app.visual_mode && app.visual_selected_uuids.contains(&paper.id);
-            let prefix = if app.visual_mode {
-                if is_visual_selected {
-                    if is_selected {
-                        "> [x] "
+    let inner_area = papers_block.inner(area);
+    let visible_height = (inner_area.height as usize).saturating_sub(2);
+    let total_items = app.papers.len();
+    let start_idx = super::centered_scroll_offset(app.selected_paper, total_items, visible_height);
+    let end_idx = (start_idx + visible_height).min(total_items);
+
+    let rows: Vec<Row> = if total_items == 0 {
+        Vec::new()
+    } else {
+        app.papers[start_idx..end_idx]
+            .iter()
+            .enumerate()
+            .map(|(offset_idx, paper)| {
+                let actual_idx = start_idx + offset_idx;
+                let is_selected = actual_idx == app.selected_paper;
+                let is_visual_selected =
+                    app.visual_mode && app.visual_selected_uuids.contains(&paper.id);
+                let prefix = if app.visual_mode {
+                    if is_visual_selected {
+                        if is_selected {
+                            "> [x] "
+                        } else {
+                            "  [x] "
+                        }
+                    } else if is_selected {
+                        "> [ ] "
                     } else {
-                        "  [x] "
+                        "  [ ] "
                     }
                 } else if is_selected {
-                    "> [ ] "
+                    "> "
                 } else {
-                    "  [ ] "
-                }
-            } else if is_selected {
-                "> "
-            } else {
-                "  "
-            };
-            let tags_badge = app
-                .tags_by_paper
-                .get(&paper.id)
-                .filter(|t| !t.is_empty())
-                .map(|t| format!(" [{}]", t.join(", ")))
-                .unwrap_or_default();
-            let title = format!(
-                "{}{}{}",
-                prefix,
-                paper.title.as_deref().unwrap_or("[Untitled]"),
-                tags_badge
-            );
-            let authors = paper.authors.as_deref().unwrap_or("-").to_string();
-            let year = paper
-                .year
-                .map(|y| y.to_string())
-                .unwrap_or_else(|| "-".to_string());
+                    "  "
+                };
+                let tags_badge = app
+                    .tags_by_paper
+                    .get(&paper.id)
+                    .filter(|t| !t.is_empty())
+                    .map(|t| format!(" [{}]", t.join(", ")))
+                    .unwrap_or_default();
+                let title = format!(
+                    "{}{}{}",
+                    prefix,
+                    paper.title.as_deref().unwrap_or("[Untitled]"),
+                    tags_badge
+                );
+                let authors = paper.authors.as_deref().unwrap_or("-").to_string();
+                let year = paper
+                    .year
+                    .map(|y| y.to_string())
+                    .unwrap_or_else(|| "-".to_string());
 
-            let mut style = Style::default();
-            if is_visual_selected {
-                style = style.bg(Color::Rgb(25, 45, 75));
-            }
-            if is_selected {
-                if app.active_panel == ActivePanel::Papers {
-                    style = style.fg(Color::Yellow).add_modifier(Modifier::BOLD);
-                } else {
-                    style = style.fg(Color::White).add_modifier(Modifier::UNDERLINED);
+                let mut style = Style::default();
+                if is_visual_selected {
+                    style = style.bg(Color::Rgb(25, 45, 75));
                 }
-            }
-            Row::new(vec![title, authors, year]).style(style)
-        })
-        .collect();
+                if is_selected {
+                    if app.active_panel == ActivePanel::Papers {
+                        style = style.fg(Color::Yellow).add_modifier(Modifier::BOLD);
+                    } else {
+                        style = style.fg(Color::White).add_modifier(Modifier::UNDERLINED);
+                    }
+                }
+                Row::new(vec![title, authors, year]).style(style)
+            })
+            .collect()
+    };
 
     let widths = [
         Constraint::Percentage(55),
@@ -340,9 +361,10 @@ pub fn render_details(app: &App, frame: &mut Frame, area: Rect) {
         if app.active_panel == ActivePanel::Details && !app.toc_preview.is_empty() {
             let metadata_lines_count = lines.len().saturating_sub(app.toc_preview.len());
             let current_line = metadata_lines_count + app.selected_toc;
-            if current_line >= visible_height {
-                scroll_y = (current_line - visible_height + 2) as u16;
-            }
+            let half = visible_height / 2;
+            let ideal_scroll = current_line.saturating_sub(half);
+            let max_scroll = lines.len().saturating_sub(visible_height);
+            scroll_y = (ideal_scroll.min(max_scroll)) as u16;
         }
 
         let paragraph = Paragraph::new(lines)
@@ -404,13 +426,8 @@ pub fn render_fullscreen_toc(app: &App, frame: &mut Frame, area: Rect) {
         .split(inner_area);
 
     let visible_height = chunks[0].height as usize;
-    let scroll_offset = if app.selected_toc < app.toc_scroll_offset {
-        app.selected_toc
-    } else if app.selected_toc >= app.toc_scroll_offset + visible_height {
-        app.selected_toc.saturating_sub(visible_height) + 1
-    } else {
-        app.toc_scroll_offset
-    };
+    let scroll_offset =
+        super::centered_scroll_offset(app.selected_toc, app.toc_preview.len(), visible_height);
 
     let mut id_to_level = HashMap::new();
     for entry in &app.toc_preview {

@@ -25,8 +25,8 @@ pub fn map_key_event_for_app(key: KeyEvent, app: &App) -> Option<Action> {
         match key.code {
             KeyCode::Esc => return Some(Action::PickerCancel),
             KeyCode::Enter => return Some(Action::PickerConfirm),
-            KeyCode::PageDown => return Some(Action::PickerPageDown),
-            KeyCode::PageUp => return Some(Action::PickerPageUp),
+            KeyCode::PageDown | KeyCode::Char('}') => return Some(Action::PickerPageDown),
+            KeyCode::PageUp | KeyCode::Char('{') => return Some(Action::PickerPageUp),
             KeyCode::Down | KeyCode::Char('j') => return Some(Action::PickerMoveDown),
             KeyCode::Up | KeyCode::Char('k') => return Some(Action::PickerMoveUp),
             KeyCode::Char(' ') if picker.multi_select => return Some(Action::PickerToggleItem),
@@ -237,6 +237,8 @@ pub fn map_key_event_for_app(key: KeyEvent, app: &App) -> Option<Action> {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => return Some(Action::MoveUp),
             KeyCode::Down | KeyCode::Char('j') => return Some(Action::MoveDown),
+            KeyCode::Char('}') => return Some(Action::Motion(Motion::HalfPageDown)),
+            KeyCode::Char('{') => return Some(Action::Motion(Motion::HalfPageUp)),
             KeyCode::Char('g') => {
                 if app.pending_chord == Some('g') {
                     if let Some(count) = app.pending_count {
@@ -384,6 +386,16 @@ pub fn map_key_event_for_app(key: KeyEvent, app: &App) -> Option<Action> {
     }
 
     if !key.modifiers.contains(KeyModifiers::CONTROL) {
+        if app.pending_chord == Some('Z') {
+            match key.code {
+                KeyCode::Char('Z') | KeyCode::Char('Q') => return Some(Action::Quit),
+                _ => return Some(Action::ResetNavigationState),
+            }
+        }
+        if key.code == KeyCode::Char('Z') {
+            return Some(Action::PendingChord('Z'));
+        }
+
         match key.code {
             KeyCode::Char('g') => {
                 if app.pending_chord == Some('g') {
@@ -500,6 +512,22 @@ pub fn map_key_event_with_context(
         KeyCode::BackTab => Some(Action::PreviousPanel),
         KeyCode::Char('h') => Some(Action::PanelLeft),
         KeyCode::Char('l') => Some(Action::PanelRight),
+        KeyCode::Char('p') => Some(Action::QuickOpenModalOpen),
+        KeyCode::Char('W') | KeyCode::Char('z') => Some(Action::ToggleLayoutMode),
+        KeyCode::Char('}') => Some(Action::Motion(Motion::HalfPageDown)),
+        KeyCode::Char('{') => Some(Action::Motion(Motion::HalfPageUp)),
+        KeyCode::Char('J') => match active_panel {
+            ActivePanel::Collections | ActivePanel::Papers => {
+                Some(Action::Motion(Motion::HalfPageDown))
+            }
+            _ => None,
+        },
+        KeyCode::Char('K') => match active_panel {
+            ActivePanel::Collections | ActivePanel::Papers => {
+                Some(Action::Motion(Motion::HalfPageUp))
+            }
+            _ => None,
+        },
         KeyCode::Char('c') => match active_panel {
             ActivePanel::Papers => Some(Action::CollectionMembershipModalOpen),
             _ => None,
@@ -1053,6 +1081,101 @@ mod tests {
         assert_eq!(
             map_key_event_for_app(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE), &app),
             Some(Action::BatchDeleteConfirm)
+        );
+    }
+
+    #[test]
+    fn test_map_key_event_vim_analogs_and_chords() {
+        let mut app = App::new();
+        app.active_panel = ActivePanel::Papers;
+
+        // 1. 'p' is vim analog for Ctrl-p (QuickOpen)
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE), &app),
+            Some(Action::QuickOpenModalOpen)
+        );
+
+        // 2. 'W' and 'z' are vim analogs for Ctrl-w (ToggleLayoutMode)
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('W'), KeyModifiers::NONE), &app),
+            Some(Action::ToggleLayoutMode)
+        );
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE), &app),
+            Some(Action::ToggleLayoutMode)
+        );
+
+        // 3. '}' and '{' are vim analogs for Ctrl-d / Ctrl-u (HalfPageDown / HalfPageUp)
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('}'), KeyModifiers::NONE), &app),
+            Some(Action::Motion(Motion::HalfPageDown))
+        );
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('{'), KeyModifiers::NONE), &app),
+            Some(Action::Motion(Motion::HalfPageUp))
+        );
+
+        // 4. 'J' and 'K' in Papers and Collections panels map to HalfPageDown / HalfPageUp
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('J'), KeyModifiers::NONE), &app),
+            Some(Action::Motion(Motion::HalfPageDown))
+        );
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('K'), KeyModifiers::NONE), &app),
+            Some(Action::Motion(Motion::HalfPageUp))
+        );
+
+        app.active_panel = ActivePanel::Collections;
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('J'), KeyModifiers::NONE), &app),
+            Some(Action::Motion(Motion::HalfPageDown))
+        );
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('K'), KeyModifiers::NONE), &app),
+            Some(Action::Motion(Motion::HalfPageUp))
+        );
+
+        // 5. 'ZZ' and 'ZQ' quit chords
+        app.active_panel = ActivePanel::Papers;
+        assert_eq!(app.pending_chord, None);
+
+        // First 'Z' -> PendingChord('Z')
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('Z'), KeyModifiers::NONE), &app),
+            Some(Action::PendingChord('Z'))
+        );
+        app.pending_chord = Some('Z');
+
+        // Second 'Z' -> Quit (ZZ)
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('Z'), KeyModifiers::NONE), &app),
+            Some(Action::Quit)
+        );
+
+        // 'Z' followed by 'Q' -> Quit (ZQ)
+        app.pending_chord = Some('Z');
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::NONE), &app),
+            Some(Action::Quit)
+        );
+
+        // 'Z' followed by unrelated key -> ResetNavigationState
+        app.pending_chord = Some('Z');
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE), &app),
+            Some(Action::ResetNavigationState)
+        );
+
+        // 6. Picker '}' and '{' page scroll
+        app.open_quick_open();
+        assert!(app.active_picker.is_some());
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('}'), KeyModifiers::NONE), &app),
+            Some(Action::PickerPageDown)
+        );
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('{'), KeyModifiers::NONE), &app),
+            Some(Action::PickerPageUp)
         );
     }
 }

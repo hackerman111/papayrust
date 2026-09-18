@@ -114,3 +114,47 @@ pub fn render(app: &App, frame: &mut Frame) {
         render_help_modal(app, frame);
     }
 }
+
+/// Computes the centered scroll offset (0-based start index) for a viewport of `visible_height`
+/// so that `selected` is kept centered at `visible_height / 2` whenever possible.
+pub fn centered_scroll_offset(selected: usize, total_items: usize, visible_height: usize) -> usize {
+    if total_items <= visible_height || visible_height == 0 {
+        return 0;
+    }
+    let half = visible_height / 2;
+    let ideal_start = selected.saturating_sub(half);
+    let max_start = total_items.saturating_sub(visible_height);
+    ideal_start.min(max_start)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_centered_scroll_offset() {
+        // Zero or empty cases
+        assert_eq!(centered_scroll_offset(0, 0, 10), 0);
+        assert_eq!(centered_scroll_offset(5, 5, 10), 0);
+        assert_eq!(centered_scroll_offset(5, 20, 0), 0);
+
+        // When items fit inside viewport
+        assert_eq!(centered_scroll_offset(2, 8, 10), 0);
+
+        // Viewport 10, total 30
+        // Top edge: indices 0..4 should have offset 0 so index remains 0..4
+        assert_eq!(centered_scroll_offset(0, 30, 10), 0);
+        assert_eq!(centered_scroll_offset(3, 30, 10), 0);
+        assert_eq!(centered_scroll_offset(4, 30, 10), 0);
+        assert_eq!(centered_scroll_offset(5, 30, 10), 0);
+
+        // Middle: offset starts shifting so selected is at index 5 (half)
+        assert_eq!(centered_scroll_offset(6, 30, 10), 1);
+        assert_eq!(centered_scroll_offset(10, 30, 10), 5);
+        assert_eq!(centered_scroll_offset(15, 30, 10), 10);
+
+        // Bottom edge: max start is 30 - 10 = 20
+        assert_eq!(centered_scroll_offset(25, 30, 10), 20);
+        assert_eq!(centered_scroll_offset(29, 30, 10), 20);
+    }
+}
