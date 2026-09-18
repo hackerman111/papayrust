@@ -40,6 +40,12 @@ pub struct App {
     pub toc_preview: Vec<TocEntry>,
     /// 0-based index of the selected TOC entry in the details panel.
     pub selected_toc: usize,
+    /// Authoritative selection state (collection, paper, TOC).
+    pub selection: SelectionState,
+    /// In-memory cache remembering the last selected paper UUID for each collection key.
+    pub last_paper_by_collection: HashMap<CollectionKey, Uuid>,
+    /// In-memory cache remembering the last selected TOC entry UUID for each paper UUID.
+    pub last_toc_by_paper: HashMap<Uuid, Uuid>,
     /// Optional status/help message displayed in the bottom bar.
     pub status_message: Option<String>,
     /// Flag indicating whether the application is running.
@@ -133,6 +139,9 @@ impl App {
             selected_paper: 0,
             toc_preview: Vec::new(),
             selected_toc: 0,
+            selection: SelectionState::default(),
+            last_paper_by_collection: HashMap::new(),
+            last_toc_by_paper: HashMap::new(),
             status_message: None,
             running: true,
             config: Config::default(),
@@ -186,6 +195,9 @@ impl App {
             selected_paper: 0,
             toc_preview: Vec::new(),
             selected_toc: 0,
+            selection: SelectionState::default(),
+            last_paper_by_collection: HashMap::new(),
+            last_toc_by_paper: HashMap::new(),
             status_message: None,
             running: true,
             config: Config::default(),
