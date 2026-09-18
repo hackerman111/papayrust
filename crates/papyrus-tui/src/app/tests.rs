@@ -1912,3 +1912,299 @@ fn test_visual_mode_enter_conditions_and_empty() {
     assert!(!empty_app.visual_mode);
     assert!(empty_app.visual_selected_papers().is_empty());
 }
+
+#[test]
+fn test_quick_open_jump_to_paper() {
+    let mut app = App::new();
+    let p1 = dummy_paper("Attention Is All You Need", "Vaswani", 2017);
+    let p2 = dummy_paper("BERT: Pre-training", "Devlin", 2018);
+    let p3 = dummy_paper("Deep Residual Learning", "He", 2015);
+
+    let all_col = CollectionItem::new(None, "All Papers", 3);
+    app.add_collection(all_col, vec![p1.clone(), p2.clone(), p3.clone()]);
+
+    assert_eq!(app.selected_paper, 0);
+
+    // Open Quick Open
+    app.dispatch(Action::QuickOpenModalOpen);
+    assert!(app.active_picker.is_some());
+    assert_eq!(app.picker_context, Some(PickerContext::QuickOpen));
+
+    // Type "bert" to filter
+    for c in ['b', 'e', 'r', 't'] {
+        app.dispatch(Action::PickerInput(c));
+    }
+
+    let picker = app.active_picker.as_ref().unwrap();
+    assert_eq!(picker.visible_indices.len(), 1);
+    assert_eq!(picker.selected_item().unwrap().id, p2.id);
+
+    // Confirm selection
+    app.dispatch(Action::PickerConfirm);
+    assert!(app.active_picker.is_none());
+    assert_eq!(app.picker_context, None);
+    assert_eq!(app.active_panel, ActivePanel::Papers);
+    assert_eq!(app.current_paper().unwrap().id, p2.id);
+    assert_eq!(app.selected_paper, 1);
+}
+
+#[test]
+fn test_quick_open_jump_to_collection() {
+    let mut app = App::new();
+    let col1 = CollectionItem::new(None, "All Papers", 2);
+    let c2_id = Uuid::now_v7();
+    let col2 = CollectionItem::new(Some(c2_id), "Machine Learning", 2);
+
+    let p1 = dummy_paper("Paper 1", "Author", 2020);
+    let p2 = dummy_paper("Paper 2", "Author", 2021);
+
+    app.add_collection(col1, vec![p1.clone(), p2.clone()]);
+    app.add_collection(col2, vec![p1.clone(), p2.clone()]);
+
+    assert_eq!(app.selected_collection, 0);
+
+    // Open Quick Open
+    app.open_quick_open();
+    assert!(app.active_picker.is_some());
+
+    // Filter "Machine"
+    for c in ['m', 'a', 'c', 'h'] {
+        app.dispatch(Action::PickerInput(c));
+    }
+
+    // Confirm selection
+    app.dispatch(Action::PickerConfirm);
+    assert!(app.active_picker.is_none());
+    assert_eq!(app.active_panel, ActivePanel::Papers);
+    assert_eq!(app.selected_collection, 1);
+    assert_eq!(app.current_collection().unwrap().name, "Machine Learning");
+}
+
+#[test]
+fn test_collection_membership_picker_single_paper() {
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let c1 = papyrus_core::db::Collection {
+        id: Uuid::now_v7(),
+        name: "Collection 1".to_string(),
+        parent_id: None,
+    };
+    let c2 = papyrus_core::db::Collection {
+        id: Uuid::now_v7(),
+        name: "Collection 2".to_string(),
+        parent_id: None,
+    };
+    papyrus_core::db::CollectionRepo::insert(&conn, &c1).unwrap();
+    papyrus_core::db::CollectionRepo::insert(&conn, &c2).unwrap();
+
+    let p1 = dummy_paper("Paper One", "Author", 2022);
+    papyrus_core::db::PaperRepo::insert(&conn, &p1).unwrap();
+    papyrus_core::db::CollectionRepo::add_paper(&conn, p1.id, c1.id).unwrap();
+
+    let mut app = App::from_db_conn(conn).unwrap();
+    app.active_panel = ActivePanel::Papers;
+    app.selected_paper = 0;
+
+    // Open collection membership modal
+    app.dispatch(Action::CollectionMembershipModalOpen);
+    assert!(app.active_picker.is_some());
+    assert_eq!(
+        app.picker_context,
+        Some(PickerContext::CollectionMembership {
+            target_papers: vec![p1.id]
+        })
+    );
+
+    let picker = app.active_picker.as_ref().unwrap();
+    assert!(picker.checked.contains(&c1.id));
+    assert!(!picker.checked.contains(&c2.id));
+
+    // Toggle items: uncheck c1, check c2
+    // Move to c1 and toggle, move to c2 and toggle
+    let c1_pos = picker
+        .visible_indices
+        .iter()
+        .position(|&idx| picker.items[idx].id == c1.id)
+        .unwrap();
+    let c2_pos = picker
+        .visible_indices
+        .iter()
+        .position(|&idx| picker.items[idx].id == c2.id)
+        .unwrap();
+
+    // Select c1 and toggle
+    app.active_picker.as_mut().unwrap().selected = c1_pos;
+    app.dispatch(Action::PickerToggleItem);
+
+    // Select c2 and toggle
+    app.active_picker.as_mut().unwrap().selected = c2_pos;
+    app.dispatch(Action::PickerToggleItem);
+
+    // Confirm changes
+    app.dispatch(Action::PickerConfirm);
+    assert!(app.active_picker.is_none());
+
+    // Verify in db
+    let db_conn = app.db_conn.as_ref().unwrap();
+    let p1_cols =
+        papyrus_core::db::CollectionRepo::get_collections_for_paper(db_conn, p1.id).unwrap();
+    let p1_col_ids: Vec<Uuid> = p1_cols.into_iter().map(|c| c.id).collect();
+    assert!(!p1_col_ids.contains(&c1.id));
+    assert!(p1_col_ids.contains(&c2.id));
+}
+
+#[test]
+fn test_collection_membership_picker_batch_papers() {
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let c1 = papyrus_core::db::Collection {
+        id: Uuid::now_v7(),
+        name: "Col A".to_string(),
+        parent_id: None,
+    };
+    let c2 = papyrus_core::db::Collection {
+        id: Uuid::now_v7(),
+        name: "Col B".to_string(),
+        parent_id: None,
+    };
+    papyrus_core::db::CollectionRepo::insert(&conn, &c1).unwrap();
+    papyrus_core::db::CollectionRepo::insert(&conn, &c2).unwrap();
+
+    let p1 = dummy_paper("Paper A", "Author", 2022);
+    let p2 = dummy_paper("Paper B", "Author", 2023);
+    papyrus_core::db::PaperRepo::insert(&conn, &p1).unwrap();
+    papyrus_core::db::PaperRepo::insert(&conn, &p2).unwrap();
+
+    papyrus_core::db::CollectionRepo::add_paper(&conn, p1.id, c1.id).unwrap();
+    papyrus_core::db::CollectionRepo::add_paper(&conn, p2.id, c1.id).unwrap();
+
+    let mut app = App::from_db_conn(conn).unwrap();
+    app.active_panel = ActivePanel::Papers;
+    app.selected_paper = 0;
+
+    // Visual mode select both papers
+    app.enter_visual_mode();
+    app.apply_motion(Motion::Relative(1));
+    assert_eq!(app.visual_selected_papers().len(), 2);
+
+    // Open collection membership modal
+    app.dispatch(Action::CollectionMembershipModalOpen);
+    let picker = app.active_picker.as_ref().unwrap();
+    assert!(picker.checked.contains(&c1.id));
+    assert!(!picker.checked.contains(&c2.id));
+
+    // Check c2
+    let c2_pos = picker
+        .visible_indices
+        .iter()
+        .position(|&idx| picker.items[idx].id == c2.id)
+        .unwrap();
+    app.active_picker.as_mut().unwrap().selected = c2_pos;
+    app.dispatch(Action::PickerToggleItem);
+
+    // Confirm
+    app.dispatch(Action::PickerConfirm);
+    assert!(app.active_picker.is_none());
+    assert!(!app.visual_mode);
+
+    // Verify both papers now have c1 and c2
+    let db_conn = app.db_conn.as_ref().unwrap();
+    for pid in [p1.id, p2.id] {
+        let cols =
+            papyrus_core::db::CollectionRepo::get_collections_for_paper(db_conn, pid).unwrap();
+        let col_ids: Vec<Uuid> = cols.into_iter().map(|c| c.id).collect();
+        assert!(col_ids.contains(&c1.id));
+        assert!(col_ids.contains(&c2.id));
+    }
+}
+
+#[test]
+fn test_tag_picker_single_and_batch() {
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let p1 = dummy_paper("Paper T1", "Author", 2022);
+    let p2 = dummy_paper("Paper T2", "Author", 2023);
+    papyrus_core::db::PaperRepo::insert(&conn, &p1).unwrap();
+    papyrus_core::db::PaperRepo::insert(&conn, &p2).unwrap();
+
+    papyrus_core::db::TagRepo::add_tag(&conn, p1.id, "initial").unwrap();
+
+    let mut app = App::from_db_conn(conn).unwrap();
+    app.active_panel = ActivePanel::Papers;
+    app.selected_paper = 0;
+
+    // Open tag picker for single paper
+    app.dispatch(Action::TagModalOpen);
+    assert!(app.active_picker.is_some());
+    assert_eq!(
+        app.picker_context,
+        Some(PickerContext::TagManagement {
+            target_papers: vec![p1.id]
+        })
+    );
+
+    // Add a new tag via query buffer
+    for c in ['n', 'e', 'w', 't', 'a', 'g'] {
+        app.dispatch(Action::PickerInput(c));
+    }
+    app.dispatch(Action::PickerConfirm);
+    assert!(app.active_picker.is_none());
+
+    // Verify p1 tags in DB
+    let db_conn = app.db_conn.as_ref().unwrap();
+    let p1_tags = papyrus_core::db::TagRepo::get_tags_for_paper(db_conn, p1.id).unwrap();
+    assert!(p1_tags.contains(&"initial".to_string()));
+    assert!(p1_tags.contains(&"newtag".to_string()));
+
+    // Now batch tag P1 and P2 in visual mode
+    app.enter_visual_mode();
+    app.apply_motion(Motion::Relative(1));
+    assert_eq!(app.visual_selected_papers().len(), 2);
+
+    app.dispatch(Action::TagModalOpen);
+    for c in ['c', 'o', 'm', 'm', 'o', 'n'] {
+        app.dispatch(Action::PickerInput(c));
+    }
+    app.dispatch(Action::PickerConfirm);
+
+    let db_conn = app.db_conn.as_ref().unwrap();
+    for pid in [p1.id, p2.id] {
+        let tags = papyrus_core::db::TagRepo::get_tags_for_paper(db_conn, pid).unwrap();
+        assert!(tags.contains(&"common".to_string()));
+    }
+}
+
+#[test]
+fn test_batch_delete_in_visual_mode() {
+    let conn = papyrus_core::db::open_in_memory().unwrap();
+    let p1 = dummy_paper("Paper D1", "Author", 2022);
+    let p2 = dummy_paper("Paper D2", "Author", 2023);
+    let p3 = dummy_paper("Paper D3", "Author", 2024);
+    papyrus_core::db::PaperRepo::insert(&conn, &p1).unwrap();
+    papyrus_core::db::PaperRepo::insert(&conn, &p2).unwrap();
+    papyrus_core::db::PaperRepo::insert(&conn, &p3).unwrap();
+
+    let mut app = App::from_db_conn(conn).unwrap();
+    app.active_panel = ActivePanel::Papers;
+    app.selected_paper = 0;
+
+    // Enter visual mode and select P1 and P2
+    app.enter_visual_mode();
+    app.apply_motion(Motion::Relative(1));
+    assert_eq!(app.visual_selected_papers(), vec![p1.id, p2.id]);
+
+    // Batch delete
+    app.dispatch(Action::BatchDeleteConfirm);
+    assert!(!app.visual_mode);
+
+    // Verify in db and app
+    let db_conn = app.db_conn.as_ref().unwrap();
+    assert!(papyrus_core::db::PaperRepo::get_by_id(db_conn, p1.id)
+        .unwrap()
+        .is_none());
+    assert!(papyrus_core::db::PaperRepo::get_by_id(db_conn, p2.id)
+        .unwrap()
+        .is_none());
+    assert!(papyrus_core::db::PaperRepo::get_by_id(db_conn, p3.id)
+        .unwrap()
+        .is_some());
+    assert_eq!(app.papers.len(), 1);
+    assert_eq!(app.papers[0].id, p3.id);
+}

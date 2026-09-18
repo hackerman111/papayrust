@@ -464,6 +464,83 @@ impl App {
             Action::VisualModeToggleItem => {
                 self.toggle_current_paper_selection();
             }
+            Action::QuickOpenModalOpen => {
+                self.open_quick_open();
+            }
+            Action::CollectionMembershipModalOpen => {
+                self.open_collection_membership();
+            }
+            Action::TagModalOpen => {
+                self.open_tag_picker();
+            }
+            Action::PickerInput(c) => {
+                if let Some(ref mut picker) = self.active_picker {
+                    picker.push_query_char(c);
+                }
+            }
+            Action::PickerBackspace => {
+                if let Some(ref mut picker) = self.active_picker {
+                    picker.pop_query_char();
+                }
+            }
+            Action::PickerMoveDown => {
+                if let Some(ref mut picker) = self.active_picker {
+                    picker.move_cursor(1);
+                }
+            }
+            Action::PickerMoveUp => {
+                if let Some(ref mut picker) = self.active_picker {
+                    picker.move_cursor(-1);
+                }
+            }
+            Action::PickerPageDown => {
+                if let Some(ref mut picker) = self.active_picker {
+                    picker.move_cursor(10);
+                }
+            }
+            Action::PickerPageUp => {
+                if let Some(ref mut picker) = self.active_picker {
+                    picker.move_cursor(-10);
+                }
+            }
+            Action::PickerToggleItem => {
+                if let Some(ref mut picker) = self.active_picker {
+                    picker.toggle_selected();
+                }
+            }
+            Action::PickerConfirm => {
+                self.confirm_active_picker();
+            }
+            Action::PickerCancel => {
+                self.cancel_active_picker();
+            }
+            Action::BatchDeleteConfirm if self.visual_mode => {
+                let papers = self.visual_selected_papers();
+                if !papers.is_empty() {
+                    if let Some(ref mut conn) = self.db_conn {
+                        let search_index_ref = self.search_index.as_deref();
+                        let _ = crate::app::batch_delete_papers(conn, &papers, search_index_ref);
+                    }
+                    if self.db_conn.is_some() {
+                        let _ = self.reload_from_db();
+                    } else {
+                        for list in self.papers_by_collection.values_mut() {
+                            list.retain(|p| !papers.contains(&p.id));
+                        }
+                        for pid in &papers {
+                            self.tags_by_paper.remove(pid);
+                            self.tocs_by_paper.remove(pid);
+                            self.last_toc_by_paper.remove(pid);
+                        }
+                        self.last_paper_by_collection
+                            .retain(|_, pid| !papers.contains(pid));
+                        self.sync_current_selection();
+                    }
+                    self.set_status(format!("Deleted {} papers", papers.len()));
+                }
+                self.exit_visual_mode();
+                self.needs_clear = true;
+            }
             _ => {}
         }
     }

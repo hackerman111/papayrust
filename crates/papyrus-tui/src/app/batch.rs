@@ -47,7 +47,7 @@ pub fn batch_set_tags(
 pub fn batch_delete_papers(
     conn: &mut Connection,
     paper_ids: &[Uuid],
-    search_index: &Option<SearchIndex>,
+    search_index: Option<&SearchIndex>,
 ) -> Result<usize, RepoError> {
     let tx = conn.transaction().map_err(RepoError::from_sqlite)?;
     let mut deleted_count = 0;
@@ -168,7 +168,7 @@ mod tests {
         let p3 = create_test_paper(&conn, "Paper 3");
 
         let paper_ids = vec![p1.id, p2.id];
-        let deleted = batch_delete_papers(&mut conn, &paper_ids, &None).unwrap();
+        let deleted = batch_delete_papers(&mut conn, &paper_ids, None).unwrap();
         assert_eq!(deleted, 2);
 
         assert!(PaperRepo::get_by_id(&conn, p1.id).unwrap().is_none());
@@ -189,7 +189,7 @@ mod tests {
         assert_eq!(hits.len(), 1);
 
         let index_opt = Some(search_index);
-        let deleted = batch_delete_papers(&mut conn, &[p1.id], &index_opt).unwrap();
+        let deleted = batch_delete_papers(&mut conn, &[p1.id], index_opt.as_ref()).unwrap();
         assert_eq!(deleted, 1);
 
         assert!(PaperRepo::get_by_id(&conn, p1.id).unwrap().is_none());

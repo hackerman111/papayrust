@@ -11,6 +11,31 @@ use crate::ui;
 
 /// Maps a crossterm KeyEvent to an application Action in the context of the running App.
 pub fn map_key_event_for_app(key: KeyEvent, app: &App) -> Option<Action> {
+    if let Some(ref picker) = app.active_picker {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Char('c') | KeyCode::Char('q') => return Some(Action::Quit),
+                KeyCode::Char('d') => return Some(Action::PickerPageDown),
+                KeyCode::Char('u') => return Some(Action::PickerPageUp),
+                KeyCode::Char('j') | KeyCode::Char('n') => return Some(Action::PickerMoveDown),
+                KeyCode::Char('k') | KeyCode::Char('p') => return Some(Action::PickerMoveUp),
+                _ => return None,
+            }
+        }
+        match key.code {
+            KeyCode::Esc => return Some(Action::PickerCancel),
+            KeyCode::Enter => return Some(Action::PickerConfirm),
+            KeyCode::PageDown => return Some(Action::PickerPageDown),
+            KeyCode::PageUp => return Some(Action::PickerPageUp),
+            KeyCode::Down | KeyCode::Char('j') => return Some(Action::PickerMoveDown),
+            KeyCode::Up | KeyCode::Char('k') => return Some(Action::PickerMoveUp),
+            KeyCode::Char(' ') if picker.multi_select => return Some(Action::PickerToggleItem),
+            KeyCode::Backspace => return Some(Action::PickerBackspace),
+            KeyCode::Char(c) => return Some(Action::PickerInput(c)),
+            _ => return None,
+        }
+    }
+
     if app.is_editing_metadata {
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
@@ -329,6 +354,7 @@ pub fn map_key_event_for_app(key: KeyEvent, app: &App) -> Option<Action> {
         match key.code {
             KeyCode::Char(' ') => return Some(Action::VisualModeToggleItem),
             KeyCode::Esc => return Some(Action::VisualModeCancel),
+            KeyCode::Char('d') | KeyCode::Delete => return Some(Action::BatchDeleteConfirm),
             _ => {}
         }
     }
@@ -348,6 +374,7 @@ pub fn map_key_event_for_app(key: KeyEvent, app: &App) -> Option<Action> {
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
             KeyCode::Char('c') | KeyCode::Char('q') => return Some(Action::Quit),
+            KeyCode::Char('p') => return Some(Action::QuickOpenModalOpen),
             KeyCode::Char('w') => return Some(Action::ToggleLayoutMode),
             KeyCode::Char('d') => return Some(Action::Motion(Motion::HalfPageDown)),
             KeyCode::Char('u') => return Some(Action::Motion(Motion::HalfPageUp)),
@@ -453,6 +480,7 @@ pub fn map_key_event_with_context(
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
             KeyCode::Char('c') | KeyCode::Char('q') => return Some(Action::Quit),
+            KeyCode::Char('p') => return Some(Action::QuickOpenModalOpen),
             KeyCode::Char('w') => return Some(Action::ToggleLayoutMode),
             KeyCode::Char('d') => return Some(Action::Motion(Motion::HalfPageDown)),
             KeyCode::Char('u') => return Some(Action::Motion(Motion::HalfPageUp)),
@@ -471,6 +499,10 @@ pub fn map_key_event_with_context(
         KeyCode::BackTab => Some(Action::PreviousPanel),
         KeyCode::Char('h') => Some(Action::PanelLeft),
         KeyCode::Char('l') => Some(Action::PanelRight),
+        KeyCode::Char('c') => match active_panel {
+            ActivePanel::Papers => Some(Action::CollectionMembershipModalOpen),
+            _ => None,
+        },
         KeyCode::Char('S') => Some(Action::CyclePaperSort),
         KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveUp),
         KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveDown),
@@ -480,7 +512,8 @@ pub fn map_key_event_with_context(
         KeyCode::Esc => Some(Action::SearchCancel),
         KeyCode::Char('?') => Some(Action::HelpModalToggle),
         KeyCode::Char('t') => match active_panel {
-            ActivePanel::Papers | ActivePanel::Details => Some(Action::OpenFullscreenToc),
+            ActivePanel::Papers => Some(Action::TagModalOpen),
+            ActivePanel::Details => Some(Action::OpenFullscreenToc),
             _ => None,
         },
         KeyCode::Char('V') => match active_panel {
@@ -869,6 +902,136 @@ mod tests {
         assert_eq!(
             map_key_event_for_app(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &app),
             Some(Action::OpenAtPage(10))
+        );
+    }
+
+    #[test]
+    fn test_map_key_event_picker_modal() {
+        let mut app = App::new();
+        let item = crate::app::PickerItem::new(uuid::Uuid::now_v7(), "Item");
+        let picker = crate::app::GenericPicker::new("Test Picker", vec![item], true);
+        app.active_picker = Some(picker);
+
+        // Esc cancels
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), &app),
+            Some(Action::PickerCancel)
+        );
+
+        // Enter confirms
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &app),
+            Some(Action::PickerConfirm)
+        );
+
+        // Space toggles item in multi_select
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE), &app),
+            Some(Action::PickerToggleItem)
+        );
+
+        // j / Down moves down
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE), &app),
+            Some(Action::PickerMoveDown)
+        );
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE), &app),
+            Some(Action::PickerMoveDown)
+        );
+
+        // k / Up moves up
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE), &app),
+            Some(Action::PickerMoveUp)
+        );
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE), &app),
+            Some(Action::PickerMoveUp)
+        );
+
+        // PageDown / Ctrl-d
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE), &app),
+            Some(Action::PickerPageDown)
+        );
+        assert_eq!(
+            map_key_event_for_app(
+                KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL),
+                &app
+            ),
+            Some(Action::PickerPageDown)
+        );
+
+        // PageUp / Ctrl-u
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE), &app),
+            Some(Action::PickerPageUp)
+        );
+        assert_eq!(
+            map_key_event_for_app(
+                KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+                &app
+            ),
+            Some(Action::PickerPageUp)
+        );
+
+        // Backspace
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE), &app),
+            Some(Action::PickerBackspace)
+        );
+
+        // Character typing
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE), &app),
+            Some(Action::PickerInput('x'))
+        );
+    }
+
+    #[test]
+    fn test_map_key_event_picker_triggers_and_batch_delete() {
+        let mut app = App::new();
+        app.active_panel = ActivePanel::Papers;
+
+        // Ctrl-p -> QuickOpen
+        assert_eq!(
+            map_key_event_for_app(
+                KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
+                &app
+            ),
+            Some(Action::QuickOpenModalOpen)
+        );
+
+        // 'c' in Papers panel -> CollectionMembership
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE), &app),
+            Some(Action::CollectionMembershipModalOpen)
+        );
+
+        // 't' in Papers panel -> TagModalOpen
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE), &app),
+            Some(Action::TagModalOpen)
+        );
+
+        // 't' in Details panel -> OpenFullscreenToc
+        app.active_panel = ActivePanel::Details;
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE), &app),
+            Some(Action::OpenFullscreenToc)
+        );
+
+        // Visual mode batch delete with 'd' or Delete
+        app.active_panel = ActivePanel::Papers;
+        app.visual_mode = true;
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE), &app),
+            Some(Action::BatchDeleteConfirm)
+        );
+        assert_eq!(
+            map_key_event_for_app(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE), &app),
+            Some(Action::BatchDeleteConfirm)
         );
     }
 }
