@@ -1,4 +1,5 @@
 pub mod autocomplete;
+pub mod batch;
 pub mod db_sync;
 pub mod dispatch;
 pub mod metadata;
@@ -13,6 +14,7 @@ pub mod toc;
 #[cfg(test)]
 mod tests;
 
+pub use batch::{batch_delete_papers, batch_set_collections, batch_set_tags};
 pub use navigation::Motion;
 pub use panel::{ActivePanel, CollectionItem};
 pub use picker::{GenericPicker, PickerItem};

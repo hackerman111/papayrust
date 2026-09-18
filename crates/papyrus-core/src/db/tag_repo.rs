@@ -80,6 +80,60 @@ impl TagRepo {
         Ok(())
     }
 
+    /// Associates a single tag with a paper, creating the tag if it does not exist.
+    pub fn add_tag(conn: &Connection, paper_id: Uuid, tag: &str) -> Result<(), RepoError> {
+        let trimmed = tag.trim();
+        if trimmed.is_empty() {
+            return Ok(());
+        }
+
+        let paper_id_str = paper_id.to_string();
+        let tag_id: String = match conn.query_row(
+            "SELECT id FROM tags WHERE name = ?1",
+            params![trimmed],
+            |row| row.get(0),
+        ) {
+            Ok(id) => id,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                let new_id = Uuid::now_v7().to_string();
+                conn.execute(
+                    "INSERT INTO tags (id, name) VALUES (?1, ?2)",
+                    params![new_id, trimmed],
+                )
+                .map_err(RepoError::from_sqlite)?;
+                new_id
+            }
+            Err(e) => return Err(RepoError::from_sqlite(e)),
+        };
+
+        conn.execute(
+            "INSERT OR IGNORE INTO paper_tags (paper_id, tag_id) VALUES (?1, ?2)",
+            params![paper_id_str, tag_id],
+        )
+        .map_err(RepoError::from_sqlite)?;
+
+        Ok(())
+    }
+
+    /// Disassociates a single tag from a paper. Returns true if an association was removed.
+    pub fn remove_tag(conn: &Connection, paper_id: Uuid, tag: &str) -> Result<bool, RepoError> {
+        let trimmed = tag.trim();
+        if trimmed.is_empty() {
+            return Ok(false);
+        }
+
+        let rows_affected = conn
+            .execute(
+                "DELETE FROM paper_tags
+                 WHERE paper_id = ?1
+                   AND tag_id IN (SELECT id FROM tags WHERE name = ?2)",
+                params![paper_id.to_string(), trimmed],
+            )
+            .map_err(RepoError::from_sqlite)?;
+
+        Ok(rows_affected > 0)
+    }
+
     /// Retrieves all distinct tag names in the library.
     pub fn get_all_tags(conn: &Connection) -> Result<Vec<String>, RepoError> {
         let mut stmt = conn
@@ -184,5 +238,35 @@ mod tests {
         PaperRepo::delete(&conn, paper1.id).unwrap();
         let p1_empty = TagRepo::get_tags_for_paper(&conn, paper1.id).unwrap();
         assert!(p1_empty.is_empty());
+    }
+
+    #[test]
+    fn test_add_and_remove_tag() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let paper = make_test_paper(&conn, "Tagged Paper");
+
+        TagRepo::add_tag(&conn, paper.id, "algebra").unwrap();
+        TagRepo::add_tag(&conn, paper.id, "topology").unwrap();
+        assert_eq!(
+            TagRepo::get_tags_for_paper(&conn, paper.id).unwrap(),
+            vec!["algebra", "topology"]
+        );
+
+        // Adding existing tag is idempotent
+        TagRepo::add_tag(&conn, paper.id, "algebra").unwrap();
+        assert_eq!(
+            TagRepo::get_tags_for_paper(&conn, paper.id).unwrap(),
+            vec!["algebra", "topology"]
+        );
+
+        // Removing tag
+        assert!(TagRepo::remove_tag(&conn, paper.id, "algebra").unwrap());
+        assert_eq!(
+            TagRepo::get_tags_for_paper(&conn, paper.id).unwrap(),
+            vec!["topology"]
+        );
+
+        // Removing non-existent tag returns false
+        assert!(!TagRepo::remove_tag(&conn, paper.id, "nonexistent").unwrap());
     }
 }
