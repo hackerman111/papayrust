@@ -10,7 +10,11 @@ pub use commands::export::ExportArgs;
 pub use commands::toc::TocCommands;
 
 #[derive(Parser, Debug)]
-#[command(name = "papyrus", about = "Terminal research paper manager", version)]
+#[command(
+    name = "papayrust",
+    about = "Terminal research paper and book manager",
+    version
+)]
 pub struct Cli {
     /// Path to configuration file
     #[arg(short, long, value_name = "FILE")]

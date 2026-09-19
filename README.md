@@ -1,225 +1,178 @@
-# Papyrus
+# Papayrust
 
 [![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Papyrus** — быстрый, автономный терминальный менеджер научных статей и PDF-библиотеки (консольный аналог Zotero), написанный на Rust.
+Terminal-first library manager for books, scientific papers, and PDF documents. Think Zotero, but in the terminal, with Vim keybindings.
 
-Проект ориентирован на исследователей, разработчиков и студентов, предпочитающих эффективную работу с клавиатуры в терминале без тяжелых графических оболочек и веб-интерфейсов.
+Built on a 3-crate workspace: `papyrus-core` (SQLite + Tantivy + PDF), `papyrus-tui` (Ratatui interface), `papyrus-cli` (automation commands).
 
----
-
-## Ключевые возможности
-
-- 🚀 **Интерактивный 3-панельный TUI** на базе [Ratatui](https://github.com/ratatui-org/ratatui):
-  - **Панель коллекций**: древовидная иерархия папок и подколлекций.
-  - **Панель статей**: список публикаций с тегами, авторами, годами и названиями.
-  - **Панель деталей / TOC**: предпросмотр метаданных, аннотаций и оглавления с мгновенным переходом по страницам.
-- 🌳 **Вложенные коллекции**:
-  - Создание корневых коллекций и дочерних подпапок с неограниченной вложенностью.
-  - Удобное древовидное отображение структуры библиотеки.
-- 🔍 **Полнотекстовый и теговый поиск**:
-  - Мгновенный поиск по названиям, авторам и тегам (`#tag` или подстрока).
-  - Полнотекстовый поиск по содержимому статей через встроенный индекс [Tantivy](https://github.com/quickwit-oss/tantivy).
-  - Быстрое переключение фильтрации между коллекциями по нажатию `Tab`.
-- 📑 **Полноэкранное оглавление (TOC)**:
-  - Отдельный полноэкранный режим просмотра оглавления с плавной прокруткой для объемных книг и диссертаций.
-  - Интерактивное редактирование структуры TOC: добавление узлов, изменение страниц, сдвиг уровней (indent/outdent) и встраивание оглавления обратно в PDF.
-- 🏷️ **Тегирование и редактирование метаданных**:
-  - Присвоение произвольного количества тегов к статьям.
-  - Редактирование названия, авторов, года, журнала, DOI и аннотации прямо из TUI.
-- 📥 **Импорт документов и метаданных**:
-  - Добавление отдельных PDF-файлов или рекурсивный импорт папок с фильтрацией дубликатов по хешу содержимого (SHA-256).
-  - Импорт метаданных и тегов из JSON-файлов или каталогов с автоматическим сопоставлением по DOI, имени файла или названию.
-  - **Автодополнение путей по `Tab`** во всех модальных окнах ввода с раскрытием `~/`.
-- 📦 **Экспорт в переносимые ZIP-архивы**:
-  - Экспорт выбранной коллекции или всей библиотеки в автономный ZIP-архив с оригинальными файлами, аннотированными копиями, горячей копией SQLite и структурированным `manifest.json`.
-- 🩺 **Встроенная диагностика (`doctor`)**:
-  - Проверка целостности базы данных SQLite, доступности файлов статей и консистентности поисковых индексов.
+Ex Omniscope, my first vibecode project
 
 ---
 
-## Структура проекта
+## Features
 
-Workspace разбит на три независимых крейта:
+**Three-panel TUI**
 
-- [`crates/papyrus-core`](crates/papyrus-core): предметная область, база данных SQLite (rusqlite) с миграциями, поисковый движок Tantivy, парсеры и манипуляторы PDF (lopdf, pdf-extract), импортер JSON-метаданных, ZIP-архиватор и системный модуль проверки целостности.
-- [`crates/papyrus-tui`](crates/papyrus-tui): интерфейс терминала на базе Ratatui и Crossterm, модальные диалоги, движок автодополнения путей, контекстный статус-бар и дерево оглавления.
-- [`crates/papyrus-cli`](crates/papyrus-cli): консольная утилита с командами импорта, экспорта, управления TOC, диагностики и запуска TUI.
+- `Collections` — hierarchical folder tree with unlimited nesting, plus virtual collections (`All Papers`, `Recently Added`, `Unfiled`, `Untagged`).
+- `Papers` — list of documents with authors, year, tags; sortable by date added, year, title, or author.
+- `Details / TOC` — metadata card, abstract, interactive table of contents, and search result snippets.
+
+**Vim navigation**
+
+- `j`/`k`, `gg`/`G`, `Ctrl-d`/`Ctrl-u`, count prefixes (`5j`, `10k`).
+- Panel switching via `h`/`l` or `Tab`/`BackTab`.
+
+**Full-text search (Tantivy)**
+
+- Inverted index over title, authors, abstract, tags, and full PDF text.
+- Query syntax: `author:vaswani`, `year:2017`, `tag:transformer`.
+- Snippet highlighting in the details panel.
+- Fuzzy picker popups via `nucleo`.
+
+**Table of contents editing**
+
+- View TOC in the sidebar or full-screen (`t`).
+- Add (`a`/`A`), rename (`e`), delete (`d`), reorder (`K`/`J`), change indent level (`H`/`L`).
+- Write the modified TOC back into the PDF structure as `.annotated.pdf` (`Shift+E`).
+- Open the PDF viewer at the selected TOC entry's page.
+
+**Library organization**
+
+- Many-to-many: one document can belong to multiple collections without duplicating the file.
+- Collection picker (`c`) and tag editor (`Shift+T`) as modal overlays.
+
+**Import and export**
+
+- Add a single PDF or recursively scan a directory.
+- SHA-256 deduplication.
+- Metadata import from JSON.
+- Tab-completion for paths, including `~/`.
+- Export a collection or the entire library to a portable ZIP with a hot SQLite copy and `manifest.json`.
+
+**Built-in diagnostics (`doctor`)**
+
+- SQLite integrity check (`PRAGMA integrity_check`).
+- Verifies availability of original and annotated PDFs.
+- Checks Tantivy index consistency.
 
 ---
 
-## Сборка и установка
+## Requirements
 
-### Требования
-- **Rust**: 1.80+ (рекомендуется стабильный тулчейн `rustup`)
-- **Внешний PDF-ридер** (для открытия документов): `zathura`, `evince`, `okular`, `xdg-open` (Linux) или `open` (macOS).
+- Rust 1.80+ (stable)
+- An external PDF viewer: `zathura`, `evince`, `okular`, or `xdg-open` (Linux) / `open` (macOS)
 
-### Сборка из исходников
+---
+
+## Build
 
 ```bash
-git clone https://github.com/username/papyrus.git
-cd papyrus
-
-# Сборка оптимизированного релиза
+git clone https://github.com/hackerman111/papayrust.git
+cd papayrust
 cargo build --release
-
-# Исполняемый файл доступен по пути:
-./target/release/papyrus --help
 ```
+
+Binary: `./target/release/papyrus`
 
 ---
 
-## Быстрый старт
+## Usage
 
-### Запуск TUI
-
-Запуск интерактивного интерфейса по умолчанию:
 ```bash
+# Launch the TUI
 ./target/release/papyrus
-# или явно:
-./target/release/papyrus tui
+
+# Or via cargo
+cargo run -p papayrust --
 ```
 
-При первом запуске Papyrus автоматически создаст каталог библиотеки `.library/` с базой данных `library.db` и поисковыми индексами.
+On first launch, Papayrust creates `.library/` with `library.db` and Tantivy search indices.
 
----
+### CLI commands
 
-## Горячие клавиши TUI
-
-### Общие
-| Клавиша | Действие |
-|---|---|
-| `Tab` / `BackTab` | Переключение между панелями (`Collections` ↔ `Papers` ↔ `Details`) |
-| `/` | Активировать строку поиска |
-| `?` | Открыть интерактивную справку по горячим клавишам |
-| `q` / `Ctrl+C` | Выход из приложения |
-
-### Панель коллекций (`Collections`)
-| Клавиша | Действие |
-|---|---|
-| `j` / `k` (или `↓` / `↑`) | Перемещение по списку/дереву коллекций |
-| `a` | Создать новую коллекцию верхнего уровня |
-| `A` (Shift+a) | Создать вложенную подколлекцию внутри выбранной |
-| `r` | Переименовать выбранную коллекцию |
-| `E` (Shift+e) | Экспортировать коллекцию в ZIP-архив |
-| `d` | Удалить выбранную коллекцию (с подтверждением) |
-
-### Панель статей (`Papers`)
-| Клавиша | Действие |
-|---|---|
-| `j` / `k` (или `↓` / `↑`) | Выбор статьи |
-| `Enter` / `o` | Открыть PDF во внешнем просмотрщике |
-| `t` | Открыть оглавление статьи в полноэкранном режиме |
-| `T` (Shift+t) | Редактировать теги выбранной статьи |
-| `a` | Добавить PDF или папку с PDF (с автодополнением по `Tab`) |
-| `e` | Редактировать метаданные статьи (название, авторы, год и т.д.) |
-| `m` | Импортировать метаданные из JSON-файла или каталога |
-| `d` | Удалить статью из библиотеки (с подтверждением) |
-
-### Панель деталей / Оглавления (`Details / TOC`)
-| Клавиша | Действие |
-|---|---|
-| `j` / `k` | Навигация по элементам оглавления |
-| `Enter` | Открыть PDF непосредственно на выбранной странице |
-| `t` | Развернуть оглавление на весь экран |
-| `a` | Добавить соседний пункт оглавления (sibling) |
-| `A` (Shift+a) | Добавить дочерний пункт оглавления (child) |
-| `e` | Редактировать заголовок или страницу выбранного пункта |
-| `d` | Удалить пункт оглавления |
-| `H` / `L` | Уменьшить / увеличить уровень вложенности (outdent / indent) |
-| `K` / `J` | Переместить пункт вверх / вниз по списку |
-| `E` (Shift+e) | Встроить измененное оглавление обратно в PDF (создает `.annotated.pdf`) |
-| `i` | Импортировать TOC из исходного PDF или внешнего файла (JSON/текст) |
-
-### Полноэкранный режим TOC (`t`)
-| Клавиша | Действие |
-|---|---|
-| `j` / `k` | Прокрутка оглавления по вертикали |
-| `Enter` | Открыть PDF на выбранной странице |
-| `Esc` / `q` / `t` | Вернуться в основной интерфейс |
-
-### Режим поиска (`/`)
-| Клавиша | Действие |
-|---|---|
-| `Ввод текста` | Фильтрация по названию статьи или тегу (например, `#neural` или `transformer`) |
-| `Tab` | Циклическое переключение коллекции поиска (`All Papers` → папка 1 → папка 2 ...) |
-| `Enter` | Зафиксировать текущую фильтрацию и вернуться к навигации |
-| `Esc` | Сбросить фильтр и закрыть поиск |
-
----
-
-## Консольный интерфейс (CLI)
-
-Papyrus поддерживает автоматизацию и работу без графического терминала:
-
-### Проверка статуса
 ```bash
 papyrus status
-```
-
-### Добавление статьи через CLI
-```bash
-# Добавить статью в библиотеку
 papyrus add /path/to/paper.pdf
-
-# Добавить статью с привязкой к коллекции
 papyrus add /path/to/paper.pdf --collection "Machine Learning"
-
-# Добавить без автоматического извлечения TOC
-papyrus add /path/to/paper.pdf --no-extract
-```
-
-### Управление оглавлением (TOC)
-```bash
-# Экспортировать оглавление статьи в JSON
 papyrus toc export <PAPER_UUID> --to toc.json
-
-# Импортировать оглавление из текстового файла с отступами
-papyrus toc import <PAPER_UUID> --from-text toc.txt --merge
-
-# Встроить оглавление в аннотированную копию PDF
 papyrus toc embed <PAPER_UUID>
-```
-
-### Экспорт библиотеки или коллекции
-```bash
-# Экспорт всей библиотеки в архив
 papyrus export -o my_library_backup.zip
-
-# Экспорт конкретной коллекции с перезаписью
-papyrus export --collection "Neuroscience" -o neuro.zip --force
-```
-
-### Диагностика системы
-```bash
-# Быстрая проверка базы данных и путей к файлам
-papyrus doctor
-
-# Полная проверка целостности SQLite (PRAGMA integrity_check)
 papyrus doctor --full
 ```
 
 ---
 
-## Конфигурация
+## Keybindings
 
-По умолчанию Papyrus ищет конфигурационный файл `papyrus.toml` в текущем каталоге или в стандартных путях конфигурации ОС (`~/.config/papyrus/config.toml`).
+### Global
 
-Пример `papyrus.toml`:
+| Key               | Action                                              |
+| ----------------- | --------------------------------------------------- |
+| `Tab` / `BackTab` | Cycle panels (`Collections` → `Papers` → `Details`) |
+| `h` / `l`         | Move to adjacent panel                              |
+| `/`               | Open full-text search                               |
+| `?`               | Show help                                           |
+| `q` / `Ctrl+C`    | Quit                                                |
+
+### Collections panel
+
+| Key       | Action                             |
+| --------- | ---------------------------------- |
+| `j` / `k` | Navigate                           |
+| `Enter`   | Select collection                  |
+| `a`       | New root collection                |
+| `A`       | New sub-collection inside selected |
+| `r`       | Rename                             |
+| `E`       | Export to ZIP                      |
+| `d`       | Delete (with confirmation)         |
+
+### Papers panel
+
+| Key           | Action                                                   |
+| ------------- | -------------------------------------------------------- |
+| `j` / `k`     | Navigate                                                 |
+| `Enter` / `o` | Open PDF in external viewer                              |
+| `c`           | Manage collections for this paper                        |
+| `S`           | Cycle sort order (`Added` → `Year` → `Title` → `Author`) |
+| `t`           | Full-screen TOC view                                     |
+| `T`           | Edit tags                                                |
+| `a`           | Add PDF or directory                                     |
+| `e`           | Edit metadata (title, authors, year, DOI, abstract)      |
+| `m`           | Import metadata from JSON                                |
+| `d`           | Remove from current collection                           |
+| `D`           | Permanently delete from library                          |
+
+### Details / TOC panel
+
+| Key       | Action                                       |
+| --------- | -------------------------------------------- |
+| `j` / `k` | Navigate TOC entries                         |
+| `Enter`   | Open PDF at selected page                    |
+| `t`       | Full-screen TOC                              |
+| `a` / `A` | Add sibling / child entry                    |
+| `e`       | Edit title or page number                    |
+| `H` / `L` | Outdent / indent                             |
+| `K` / `J` | Move entry up / down                         |
+| `E`       | Embed TOC into PDF (writes `.annotated.pdf`) |
+| `d`       | Delete entry                                 |
+
+---
+
+## Configuration (`papyrus.toml`)
+
+Searched in the current directory or `~/.config/papyrus/config.toml`:
 
 ```toml
 library_path = ".library"
 database_path = ".library/library.db"
 
 [viewer]
-# Приоритет программ для просмотра PDF
-preferred_apps = ["zathura", "evince", "okular"]
-# Использовать аннотированную копию, если встроено пользовательское TOC
+preferred_apps = ["zathura", "evince", "okular", "xdg-open"]
 prefer_annotated = true
 
 [search]
-# Расположение индексов Tantivy
 index_directory = ".library/search_index"
 max_results = 50
 
@@ -233,23 +186,39 @@ auto_extract_on_import = true
 
 ---
 
-## Тестирование и проверка качества
+## Project layout
 
-В репозитории реализован полный набор unit-, integration- и property-тестов, охватывающий весь функционал ядра, TUI и CLI:
+```
+papayrust/
+├── crates/
+│   ├── papyrus-core/   # SQLite, Tantivy, PDF/TOC (lopdf, pdf-extract), import/export, doctor
+│   ├── papyrus-tui/    # Ratatui + Crossterm, Vim navigation, pickers, modals, TOC tree
+│   └── papyrus-cli/    # `papyrus` binary (CLI commands + TUI entrypoint)
+├── tests/              # Integration tests
+└── Cargo.toml          # Workspace manifest
+```
+
+---
+
+## Roadmap
+
+- [x] Phase 1 — Core: SQLite + Tantivy + three-panel TUI + TOC editing + ZIP export + doctor
+- [ ] Phase 2 — UX: Quick Open (`Ctrl-p`), Markdown notes with backlinks
+- [ ] Phase 3 — Science: DOI/arXiv/ISBN lookup, metadata enrichment (CrossRef, Semantic Scholar, OpenAlex), reference extraction, BibTeX/RIS/CSL export
+- [ ] Phase 4 — Integrations: local AI assistant, Zotero/Calibre sync, server-side library sync
+
+---
+
+## Checks
 
 ```bash
-# Запуск всех тестов в workspace
 cargo test --workspace
-
-# Проверка статическим анализатором Clippy
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-
-# Проверка форматирования кода
 cargo fmt --all -- --check
 ```
 
 ---
 
-## Лицензия
+## License
 
-Проект распространяется под лицензией MIT.
+MIT

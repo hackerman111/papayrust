@@ -5,6 +5,18 @@ members = [
     "crates/papyrus-tui",
     "crates/papyrus-cli",
 ]
+default-members = ["crates/papyrus-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+repository = "https://github.com/hackerman111/papayrust"
+homepage = "https://github.com/hackerman111/papayrust"
+authors = ["hackerman111"]
+description = "Terminal-first manager for books and scientific papers with Vim controls"
+
 
 [workspace.dependencies]
 # Storage
